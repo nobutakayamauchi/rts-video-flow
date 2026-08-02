@@ -1,67 +1,104 @@
 # rts-video-flow
 
-スマホで撮った素材から、字幕・文字起こし・動画用データを作る軽量パイプラインです。
+スマホで撮った素材から、字幕・文字起こし・動画を作る軽量Vlogパイプラインです。
 
-限界開発Vlogでは、YouTube運用を重労働にしないため、**スクリーンショット中心・短い画面収録・自動字幕**を基本にします。
+限界開発Vlogでは、YouTube運用を重労働にしないため、**短いインカメラ動画・短い画面収録・スクリーンショット・自動字幕**を基本にします。
 
-## 現在できること
+## 一番簡単な使い方：Vlog Console
 
-- iPhoneの外カメラ動画を素材として受け取る
-- iPhone標準の短い画面収録を受け取る
-- スクリーンショットをファイル名順で収集する
-- Whisperで日本語を文字起こしする
-- 日本語字幕を読みやすい単位へ分割する
-- YouTubeへ登録できるSRT字幕を出力する
-- Vlog素材のmanifest.jsonを生成する
-- 公開前のプライバシー確認表を生成する
-- 既存の無音カット・Remotion準備処理を利用する
-
-## Vlog MVPの使い方
-
-### 1. 初回セットアップ
+素材を1つのフォルダへ入れて、対話形式で順番を指定します。
 
 ```bash
-./scripts/setup.sh
+python3 scripts/vlog_console.py
 ```
 
-### 2. プロジェクトを作る
+コンソールで次を順番に選べます。
 
-`projects/vlog-template`を参考に、次の構成で素材を置きます。
+- プロジェクト名
+- 素材フォルダ
+- オープニング動画
+- 画面収録
+- 差し込むスクリーンショットと順番
+- エンディング動画
+- スクリーンショット1枚の表示秒数
+- 字幕生成まで実行するか
+- 最終動画を書き出すか
+
+コンソールが素材を整理し、`vlog-plan.json`へ明示的なタイムラインを保存します。
 
 ```text
-projects/vlog-001/
-├── camera/       # iPhone外カメラ動画
-├── screen/       # 短い画面収録。省略可
-└── screenshots/  # 通常の作業記録
+オープニング
+↓
+画面収録
+↓
+スクリーンショット
+↓
+エンディング
 ```
 
-例:
+順番はコンソールで選んだ内容が優先されます。
+
+### 素材の置き方
+
+例えば、Oracle Cloud上に次のフォルダを作り、iPhoneから動画と画像を送ります。
 
 ```text
-camera/01-opening.mov
-screenshots/01-spec.png
-screenshots/02-github.png
-screenshots/03-test.png
-screen/01-short-demo.mov
+inbox/vlog-001/
+├── opening.mov
+├── screen.mov
+├── ending.mov
+├── screenshot-01.png
+└── screenshot-02.png
 ```
 
-### 3. 一括処理
+その後、`python3 scripts/vlog_console.py`を実行するだけです。
+
+## 初回セットアップ
 
 ```bash
-./scripts/process_vlog.sh projects/vlog-001
+bash scripts/setup.sh
 ```
 
-生成物:
+## 手動で回す場合
+
+```bash
+bash scripts/process_vlog.sh projects/vlog-001
+```
+
+公開前チェック後に動画を書き出します。
+
+```bash
+bash scripts/render_vlog.sh vlog-001
+```
+
+完成動画：
+
+```text
+output/vlog-001/vlog.mp4
+```
+
+## 生成物
 
 ```text
 output/vlog-001/
 ├── manifest.json
 ├── subtitles.srt
 ├── transcript.md
-└── NEXT_STEPS.md
+├── NEXT_STEPS.md
+└── vlog.mp4
 ```
 
-最初のMVPは、誤公開を防ぐため**自動投稿の直前で止まります**。`NEXT_STEPS.md`を確認してから、レンダリング・投稿へ進みます。
+## 現在できること
+
+- iPhoneのインカメラ・外カメラ動画を読み込む
+- iPhone標準の画面収録を読み込む
+- スクリーンショットの順番と表示時間を指定する
+- オープニング・画面収録・画像・エンディングを明示的に並べる
+- Whisperで日本語を文字起こしする
+- 日本語字幕を読みやすい単位へ分割する
+- YouTube用SRT字幕を出力する
+- Remotionで1920×1080の動画を書き出す
+- 公開前のプライバシー確認表を生成する
 
 ## 運用方針
 
@@ -70,53 +107,18 @@ output/vlog-001/
 - 通知、DM、メール、個人情報、APIキー、非公開URLを映さない
 - 動画制作そのものではなく、開発記録から動画を作る
 - YouTubeは限界開発の本体ではなく、ブランドと実在性を補強する出力先とする
-
-## 既存の個別処理
-
-### 無音カット
-
-```bash
-./venv/bin/python3 scripts/jumpcut.py
-```
-
-### 文字起こし
-
-```bash
-./venv/bin/python3 scripts/transcribe.py \
-  --input temp/voice_audio.wav \
-  --output temp/whisper_result.json
-```
-
-### 字幕分割
-
-```bash
-./venv/bin/python3 scripts/segment_subtitles.py \
-  --input temp/whisper_result.json \
-  --output temp/subtitles.json
-```
-
-### SRT出力
-
-```bash
-./venv/bin/python3 scripts/subtitles_to_srt.py \
-  --input temp/subtitles.json \
-  --output output/subtitles.srt
-```
-
-### Remotion準備
-
-```bash
-./venv/bin/python3 scripts/prepare_remotion.py
-```
+- 自動投稿はせず、人間の公開前確認を残す
 
 ## 仕様
 
 - [Vlog MVP仕様書](docs/VLOG_MVP_SPEC.md)
 
-## 次の実装
+## 次の確認
 
-1. manifest.jsonを直接読むRemotion Vlogテンプレート
-2. 外カメラ → スクショ → 短い画面収録 → 締め動画の自動結合
-3. スクショの軽いパン・ズーム
-4. タイトル・概要欄・note下書き生成
-5. 実素材を使った第1回ドッグフーディング
+実際のiPhone素材をコンソールへ通し、次を確認します。
+
+1. 3本の動画と画像を正しい順で結合できるか
+2. 字幕の時間がオープニング以外の素材でもずれないか
+3. 縦動画を横長フレームへ自然に配置できるか
+4. Oracle CloudのCPU・メモリでレンダリング可能か
+5. 操作手数が本当に少ないか
