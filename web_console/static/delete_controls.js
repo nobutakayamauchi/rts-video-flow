@@ -4,6 +4,40 @@
   const DELETE_CLASS = 'rts-inline-delete';
   let deleting = false;
 
+  function normalizeApiUrl(input) {
+    try {
+      const url = new URL(String(input), location.href);
+      if (url.origin !== location.origin) return input;
+      url.pathname = url.pathname
+        .replace(/^\/vlog\/static\/api\//, '/api/')
+        .replace(/^\/static\/api\//, '/api/');
+      return url.toString();
+    } catch (_) {
+      return input;
+    }
+  }
+
+  function installApiCompatibilityShim() {
+    if (window.__rtsApiShimInstalled) return;
+    window.__rtsApiShimInstalled = true;
+
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (input instanceof Request) {
+        const fixed = normalizeApiUrl(input.url);
+        if (fixed !== input.url) input = new Request(fixed, input);
+      } else {
+        input = normalizeApiUrl(input);
+      }
+      return originalFetch(input, init);
+    };
+
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      return originalOpen.call(this, method, normalizeApiUrl(url), ...rest);
+    };
+  }
+
   function addStyles() {
     if (document.getElementById('rts-delete-control-style')) return;
     const style = document.createElement('style');
@@ -22,14 +56,26 @@
   }
 
   function setPanelStatus(message) {
-    const compileVisible = document.querySelector('#compilePanel:not(.hidden)');
-    const target = compileVisible ? '#compileStatus' : '#materialStatus';
-    if (typeof status === 'function' && document.querySelector(target)) status(target, message);
+    const selectors = document.querySelector('#compilePanel:not(.hidden)')
+      ? ['#compileStatus', '#status', '#loadStatus']
+      : ['#materialStatus', '#status', '#loadStatus'];
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) continue;
+      if (typeof status === 'function' && selector !== '#status' && selector !== '#loadStatus') {
+        status(selector, message);
+      } else if (typeof setStatus === 'function' && (selector === '#status' || selector === '#loadStatus')) {
+        setStatus(selector, message);
+      } else {
+        element.textContent = message;
+      }
+      return;
+    }
   }
 
   async function deleteSavedItem(itemId) {
     if (deleting || typeof state === 'undefined') return;
-    const index = state.timeline.findIndex(item => item.id === itemId);
+    const index = state.timeline.findIndex(item => String(item.id) === String(itemId));
     const item = state.timeline[index];
     if (!item) return;
 
@@ -45,19 +91,19 @@
     body.append('item_id', itemId);
 
     try {
-      let data;
-      if (typeof requestJson === 'function') {
-        data = await requestJson('api/material', { method: 'DELETE', body });
-      } else {
-        const response = await fetch(typeof apiUrl === 'function' ? apiUrl('api/material') : 'api/material', { method: 'DELETE', body });
-        data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-      }
+      const response = await fetch(new URL('/api/material', location.origin), {
+        method: 'DELETE',
+        body,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
 
       state.timeline = data.timeline || [];
       if (typeof renderTimeline === 'function') {
         if (document.querySelector('#timeline')) renderTimeline('#timeline');
         if (document.querySelector('#finalTimeline')) renderTimeline('#finalTimeline');
+      } else if (typeof load === 'function') {
+        await load();
       }
 
       const roles = state.timeline.map(value => value.role);
@@ -110,31 +156,39 @@
     state.blobName = '';
     const button = document.querySelector('#saveMaterial');
     if (button) button.disabled = true;
-    if (typeof status === 'function') status('#materialStatus', '選択・録画を破棄しました。別の素材を選び直せます。');
+    const message = '選択・録画を破棄しました。別の素材を選び直せます。';
+    const target = document.querySelector('#materialStatus');
+    if (target) target.textContent = message;
   }
 
   function discardNarration() {
     if (typeof state === 'undefined') return;
     try {
-      if (state.audioRecorder && state.audioRecorder.state !== 'inactive') {
-        state.audioRecorder.onstop = () => {};
-        state.audioRecorder.stop();
+      const recorder = state.audioRecorder || state.recorder;
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.onstop = () => {};
+        recorder.stop();
       }
     } catch (_) {}
     try {
-      if (state.audioStream) state.audioStream.getTracks().forEach(track => track.stop());
+      const stream = state.audioStream || state.stream;
+      if (stream) stream.getTracks().forEach(track => track.stop());
     } catch (_) {}
-    state.audioBlob = null;
-    state.audioChunks = [];
-    const preview = document.querySelector('#audioPreview');
+
+    if ('audioBlob' in state) state.audioBlob = null;
+    if ('audioChunks' in state) state.audioChunks = [];
+    if (document.querySelector('#record') && 'blob' in state) state.blob = null;
+    if (document.querySelector('#record') && 'chunks' in state) state.chunks = [];
+
+    const preview = document.querySelector('#audioPreview') || document.querySelector('#editor #preview');
     if (preview) {
       preview.pause();
       preview.removeAttribute('src');
       preview.classList.add('hidden');
     }
-    const save = document.querySelector('#saveNarration');
+    const save = document.querySelector('#saveNarration') || document.querySelector('#editor #save');
     if (save) save.disabled = true;
-    if (typeof status === 'function') status('#narrationStatus', '録音を破棄しました。録り直せます。');
+    setPanelStatus('録音を破棄しました。録り直せます。');
   }
 
   function addDiscardControls() {
@@ -153,7 +207,7 @@
       button.insertAdjacentElement('afterend', note);
     }
 
-    const saveNarration = document.querySelector('#saveNarration');
+    const saveNarration = document.querySelector('#saveNarration') || document.querySelector('#editor #save');
     if (saveNarration && !document.querySelector('#discardNarration')) {
       const button = document.createElement('button');
       button.id = 'discardNarration';
@@ -172,6 +226,7 @@
     enhanceTimeline('#finalTimeline');
   }
 
+  installApiCompatibilityShim();
   const observer = new MutationObserver(() => enhanceAll());
   observer.observe(document.documentElement, { childList: true, subtree: true });
 
