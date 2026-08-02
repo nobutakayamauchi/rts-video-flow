@@ -39,7 +39,7 @@ def build(project:Path,manifest:dict[str,Any],public:Path):
   cursor+=duration
  if not out:fail("No valid assets")
  return out,cursor
-def root_tsx(w,h,d): return f'''import React from "react";\nimport {{Composition}} from "remotion";\nimport {{VlogVideo}} from "./VlogVideo";\nexport const RemotionRoot:React.FC=()=> <Composition id="VlogVideo" component={{VlogVideo}} fps={FPS} width={w} height={h} durationInFrames={d}/>;\n'''
+def root_tsx(w,h,d): return f'''import React from "react";\nimport {{Composition}} from "remotion";\nimport {{VlogVideo}} from "./VlogVideo";\nexport const RemotionRoot:React.FC=()=> <Composition id="VlogVideo" component={{VlogVideo}} fps={{{FPS}}} width={{{w}}} height={{{h}}} durationInFrames={{{d}}}/>;\n'''
 def vlog_tsx(): return '''import React from "react";
 import {AbsoluteFill,Audio,Img,OffthreadVideo,Sequence,interpolate,staticFile,useCurrentFrame} from "remotion";
 import timeline from "../public/vlog/timeline.json";
