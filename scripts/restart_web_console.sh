@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+bash scripts/install_inline_delete_controls.sh
+
 pkill -f "uvicorn web_console.app:app" 2>/dev/null || true
 sleep 1
 
