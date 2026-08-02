@@ -6,13 +6,13 @@
 <title>限界開発 Vlog 素材管理</title>
 <style>
 :root{--bg:#0b0f14;--panel:#151c25;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:22px 16px 90px}h1{font-size:1.7rem;margin:.3em 0}.lead,.hint{color:var(--muted);line-height:1.65}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:15px 0}label{display:block;font-weight:800;margin:8px 0}input,button{width:100%;font:inherit;border-radius:12px;padding:14px}input{background:#0d131b;color:#fff;border:1px solid #3a4b60}button{border:0;background:var(--gold);color:#17120a;font-weight:900;margin-top:10px}.danger{background:var(--red);color:#1b0b09}.secondary{background:var(--blue);color:#fff}.item{padding:14px;border:1px solid var(--line);border-radius:14px;background:#0d131b;margin:10px 0;overflow-wrap:anywhere}.item strong{color:var(--gold)}.meta{color:var(--muted);font-size:.9rem;line-height:1.55}.status{white-space:pre-wrap;color:#d6dee7}.empty{color:var(--muted);padding:15px;text-align:center;border:1px dashed var(--line);border-radius:12px}a{color:var(--gold)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:22px 16px 90px}h1{font-size:1.7rem;margin:.3em 0}.lead,.hint{color:var(--muted);line-height:1.65}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:15px 0}label{display:block;font-weight:800;margin:8px 0}input,button{width:100%;font:inherit;border-radius:12px;padding:14px}input{background:#0d131b;color:#fff;border:1px solid #3a4b60}button{border:0;background:var(--gold);color:#17120a;font-weight:900;margin-top:10px}.danger{background:var(--red);color:#1b0b09}.item{padding:14px;border:1px solid var(--line);border-radius:14px;background:#0d131b;margin:10px 0;overflow-wrap:anywhere}.item strong{color:var(--gold)}.meta{color:var(--muted);font-size:.9rem;line-height:1.55}.status{white-space:pre-wrap;color:#d6dee7}.empty{color:var(--muted);padding:15px;text-align:center;border:1px dashed var(--line);border-radius:12px}a{color:var(--gold)}
 </style>
 </head>
 <body><main class="wrap">
 <h1>Vlog素材管理</h1>
-<p class="lead">間違えて登録した動画やスクリーンショットを、タイムラインから外せます。ファイルは完全消去せず、プロジェクト内の <code>.trash</code> へ退避します。</p>
-<p><a href="../">Vlog画面へ戻る</a></p>
+<p class="lead">間違えて登録した動画やスクリーンショットをタイムラインから外せます。ファイルは完全消去せず、プロジェクト内の <code>.trash</code> へ退避します。</p>
+<p><a id="back" href="../">Vlog画面へ戻る</a></p>
 <section class="panel">
 <label for="project">プロジェクト名</label>
 <input id="project" value="vlog-001" autocomplete="off">
@@ -25,50 +25,17 @@
 </section>
 </main>
 <script>
-const $=s=>document.querySelector(s);
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('../',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
 const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'スクリーンショット',camera:'通常動画'};
 let timeline=[];
 function projectName(){return $('#project').value.trim()}
 function setStatus(message){$('#status').textContent=message}
-function render(){
- const box=$('#items');
- if(!timeline.length){box.className='empty';box.innerHTML='登録済み素材はありません。';return}
- box.className='';
- box.innerHTML=timeline.map((item,index)=>`<article class="item">
-  <strong>${index+1}. ${labels[item.role]||item.role||'素材'}</strong>
-  <p class="meta">${item.source||''}</p>
-  ${(item.explanation||item.description)?`<p>${item.explanation||item.description}</p>`:''}
-  ${item.narration?'<p class="meta">🎙 ナレーションあり</p>':''}
-  <button class="danger delete" data-id="${item.id}">この素材を削除</button>
- </article>`).join('');
- box.querySelectorAll('.delete').forEach(button=>button.onclick=()=>removeItem(button.dataset.id));
-}
-async function load(){
- const name=projectName();
- if(!name){setStatus('プロジェクト名を入力してください。');return}
- setStatus('読み込み中…');
- const response=await fetch('/api/project/'+encodeURIComponent(name),{cache:'no-store'});
- const data=await response.json().catch(()=>({}));
- if(!response.ok){setStatus('読み込み失敗: '+(data.detail||response.status));return}
- timeline=data.timeline||[];
- render();
- setStatus(`${timeline.length}件の素材を読み込みました。`);
-}
-async function removeItem(itemId){
- const item=timeline.find(value=>value.id===itemId);
- const title=labels[item?.role]||item?.role||'この素材';
- if(!confirm(`${title}をタイムラインから削除しますか？\n\nファイルは .trash へ退避されます。`))return;
- const body=new FormData();
- body.append('project',projectName());
- body.append('item_id',itemId);
- setStatus('削除中…');
- const response=await fetch('/api/material',{method:'DELETE',body});
- const data=await response.json().catch(()=>({}));
- if(!response.ok){setStatus('削除失敗: '+(data.detail||response.status));return}
- timeline=data.timeline||[];
- render();
- setStatus('削除しました。元ファイルは .trash に退避されています。');
-}
+async function requestJson(path,options={}){let response;try{response=await fetch(apiUrl(path),options)}catch(error){throw new Error('通信失敗: '+error.message)}const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text.slice(0,400)||`HTTP ${response.status}`}}if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);return data}
+function render(){const box=$('#items');if(!timeline.length){box.className='empty';box.innerHTML='登録済み素材はありません。';return}box.className='';box.innerHTML=timeline.map((item,index)=>`<article class="item"><strong>${index+1}. ${labels[item.role]||item.role||'素材'}</strong><p class="meta">${item.source||''}</p>${(item.explanation||item.description)?`<p>${item.explanation||item.description}</p>`:''}${item.narration?'<p class="meta">🎙 ナレーションあり</p>':''}<button class="danger delete" data-id="${item.id}">この素材を削除</button></article>`).join('');box.querySelectorAll('.delete').forEach(button=>button.onclick=()=>removeItem(button.dataset.id))}
+async function load(){const name=projectName();if(!name){setStatus('プロジェクト名を入力してください。');return}setStatus('読み込み中…');try{const data=await requestJson('api/project/'+encodeURIComponent(name),{cache:'no-store'});timeline=data.timeline||[];render();setStatus(`${timeline.length}件の素材を読み込みました。`)}catch(error){setStatus('読み込み失敗: '+error.message)}}
+async function removeItem(itemId){const item=timeline.find(value=>value.id===itemId);const title=labels[item?.role]||item?.role||'この素材';if(!confirm(`${title}をタイムラインから削除しますか？\n\nファイルは .trash へ退避されます。`))return;const body=new FormData();body.append('project',projectName());body.append('item_id',itemId);setStatus('削除中…');try{const data=await requestJson('api/material',{method:'DELETE',body});timeline=data.timeline||[];render();setStatus('削除しました。元ファイルは .trash に退避されています。')}catch(error){setStatus('削除失敗: '+error.message)}}
 $('#load').onclick=load;
 const params=new URLSearchParams(location.search);if(params.get('project'))$('#project').value=params.get('project');
 load();
