@@ -19,7 +19,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 PROJECTS_DIR = ROOT / "projects"
 OUTPUT_DIR = ROOT / "output"
 ALLOWED_ROLES = {"opening", "ending", "camera", "screen", "screenshot"}
-MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 app = FastAPI(title="RTS Vlog Web Console")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -115,6 +116,34 @@ def timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
 
+async def stream_upload_to_disk(upload: UploadFile, target: Path) -> int:
+    """Write an upload incrementally so large iPhone videos do not fill RAM."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    total = 0
+    try:
+        with target.open("wb") as output:
+            while True:
+                chunk = await upload.read(UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Media is too large (maximum 1 GB)",
+                    )
+                output.write(chunk)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+    finally:
+        await upload.close()
+    if total == 0:
+        target.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Empty media")
+    return total
+
+
 def resolve_project_file(project_path: Path, relative_value: object) -> Path | None:
     """Resolve a plan file reference without allowing paths outside the project."""
     if not isinstance(relative_value, str) or not relative_value.strip():
@@ -150,6 +179,11 @@ def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.get("/api/project/{project_name}")
 def project_status(project_name: str) -> dict[str, Any]:
     project_path = project_dir(project_name)
@@ -171,25 +205,20 @@ async def save_material(
     project_path = project_dir(project)
     if role not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail="Unsupported role")
-    data = await media.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty media")
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Media is too large")
 
     plan = load_plan(project_path)
     folder = target_folder(project_path, role)
-    folder.mkdir(parents=True, exist_ok=True)
     extension = extension_for(media.content_type, media.filename)
     order = len(plan["timeline"]) + 1
     target = folder / f"{order:02d}-{role}-{timestamp()}{extension}"
-    target.write_bytes(data)
+    size_bytes = await stream_upload_to_disk(media, target)
 
     item: dict[str, Any] = {
         "id": f"item-{timestamp()}-{order}",
         "type": "image" if role == "screenshot" else "video",
         "source": str(target.relative_to(project_path)),
         "role": role,
+        "sizeBytes": size_bytes,
     }
     if description.strip():
         item["explanation"] = description.strip()
@@ -218,8 +247,6 @@ def delete_material(
     item = plan["timeline"].pop(index)
     moved = move_item_files_to_trash(project_path, item)
     save_plan(project_path, plan)
-
-    # A previously rendered video is now stale and must not be mistaken for the new plan.
     shutil.rmtree(OUTPUT_DIR / project_path.name, ignore_errors=True)
     return {
         "status": "deleted",
@@ -249,18 +276,12 @@ async def save_narration(
             detail="Narration recording is only supported for screenshots",
         )
 
-    data = await media.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty narration")
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Narration is too large")
-
     folder = project_path / "narration"
-    folder.mkdir(parents=True, exist_ok=True)
     extension = extension_for(media.content_type, media.filename)
     target = folder / f"{item_id}-{timestamp()}{extension}"
-    target.write_bytes(data)
+    size_bytes = await stream_upload_to_disk(media, target)
     item["narration"] = str(target.relative_to(project_path))
+    item["narrationSizeBytes"] = size_bytes
     if transcript_hint.strip():
         item["transcriptHint"] = transcript_hint.strip()
     save_plan(project_path, plan)
