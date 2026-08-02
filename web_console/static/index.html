@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>RTS Vlog Capture</title>
+<style>
+body{margin:0;background:#0b0f14;color:#f7f7f7;font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px}h1{font-size:1.7rem}.panel{background:#151c25;border:1px solid #2b3848;border-radius:16px;padding:16px;margin:14px 0}label{display:block;margin:10px 0 6px;font-weight:700}input,select,button{width:100%;font:inherit;border-radius:11px;padding:13px;box-sizing:border-box}input,select{background:#0d131b;color:#fff;border:1px solid #3a4b60}button{border:0;background:#ffc84a;color:#17120a;font-weight:900;margin-top:10px}.stop{background:#ff6b63}.secondary{background:#253245;color:#fff}video{width:100%;max-height:55vh;background:#000;border-radius:14px}.status{white-space:pre-wrap;color:#cbd5df}.hint{color:#aeb9c5;font-size:.92rem}
+</style>
+</head>
+<body><main class="wrap">
+<h1>限界開発 Vlog撮影</h1>
+<p class="hint">オープニング／エンディングをその場で撮影し、素材フォルダへ直接保存します。</p>
+<div class="panel">
+<label for="project">プロジェクト名</label>
+<input id="project" value="vlog-001">
+<label for="role">素材の役割</label>
+<select id="role"><option value="opening">オープニング</option><option value="ending">エンディング</option><option value="camera">通常カメラ素材</option></select>
+</div>
+<div class="panel">
+<video id="preview" autoplay playsinline muted></video>
+<button id="startCamera" class="secondary">カメラを起動</button>
+<button id="startRecord">録画開始</button>
+<button id="stopRecord" class="stop" disabled>録画停止</button>
+<button id="upload" disabled>この素材を保存</button>
+<p id="status" class="status">待機中</p>
+</div>
+<script>
+const preview=document.querySelector('#preview');
+const statusEl=document.querySelector('#status');
+let stream=null, recorder=null, chunks=[], blob=null;
+function setStatus(v){statusEl.textContent=v}
+function bestMime(){const c=['video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9,opus','video/webm'];return c.find(x=>window.MediaRecorder&&MediaRecorder.isTypeSupported(x))||''}
+async function openCamera(){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1920},height:{ideal:1080}},audio:true});
+  preview.srcObject=stream; setStatus('カメラ起動済み。録画できます。');
+}
+document.querySelector('#startCamera').onclick=()=>openCamera().catch(e=>setStatus('カメラ起動失敗: '+e.message));
+document.querySelector('#startRecord').onclick=async()=>{
+  if(!stream)await openCamera(); chunks=[]; blob=null;
+  const mime=bestMime(); recorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
+  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  recorder.onstop=()=>{blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});preview.srcObject=null;preview.src=URL.createObjectURL(blob);preview.controls=true;document.querySelector('#upload').disabled=false;setStatus(`録画完了: ${(blob.size/1024/1024).toFixed(1)} MB`)};
+  recorder.start(1000);document.querySelector('#stopRecord').disabled=false;setStatus('録画中…');
+};
+document.querySelector('#stopRecord').onclick=()=>{if(recorder&&recorder.state!=='inactive')recorder.stop();document.querySelector('#stopRecord').disabled=true};
+document.querySelector('#upload').onclick=async()=>{
+  if(!blob)return; const fd=new FormData();fd.append('project',document.querySelector('#project').value);fd.append('role',document.querySelector('#role').value);fd.append('media',blob,'capture');
+  setStatus('保存中…');
+  const r=await fetch('/api/capture',{method:'POST',body:fd}); const data=await r.json();
+  if(!r.ok){setStatus('保存失敗: '+(data.detail||r.status));return}
+  setStatus(`保存しました\n${data.path}\n次の素材を撮るか、Vlogコンソールへ進めます。`);
+};
+</script>
+</main></body></html>
