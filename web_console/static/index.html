@@ -3,54 +3,110 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>RTS Vlog Capture</title>
+<title>限界開発 Vlog Wizard</title>
 <style>
-body{margin:0;background:#0b0f14;color:#f7f7f7;font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px}h1{font-size:1.7rem}.panel{background:#151c25;border:1px solid #2b3848;border-radius:16px;padding:16px;margin:14px 0}label{display:block;margin:10px 0 6px;font-weight:700}input,select,button{width:100%;font:inherit;border-radius:11px;padding:13px;box-sizing:border-box}input,select{background:#0d131b;color:#fff;border:1px solid #3a4b60}button{border:0;background:#ffc84a;color:#17120a;font-weight:900;margin-top:10px}.stop{background:#ff6b63}.secondary{background:#253245;color:#fff}video{width:100%;max-height:55vh;background:#000;border-radius:14px}.status{white-space:pre-wrap;color:#cbd5df}.hint{color:#aeb9c5;font-size:.92rem}
+:root{--bg:#0b0f14;--panel:#151c25;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px 16px 80px}h1{font-size:1.65rem;margin:.4em 0}.lead,.hint{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}.hidden{display:none!important}label{display:block;margin:10px 0 6px;font-weight:800}input,select,textarea,button{width:100%;font:inherit;border-radius:11px;padding:13px}input,select,textarea{background:#0d131b;color:#fff;border:1px solid #3a4b60}textarea{min-height:92px;resize:vertical}button{border:0;background:var(--gold);color:#17120a;font-weight:900;margin-top:10px}.secondary{background:var(--blue);color:#fff}.danger{background:var(--red);color:#1b0b09}.ghost{background:transparent;color:var(--gold);border:1px solid var(--gold)}button:disabled{opacity:.45}video,img{width:100%;max-height:52vh;object-fit:contain;background:#000;border-radius:14px}.status{white-space:pre-wrap;color:#cbd5df}.steps{display:flex;gap:6px;overflow:auto;margin:12px 0}.step{flex:0 0 auto;padding:7px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.82rem}.step.active{background:var(--gold);color:#17120a;border-color:var(--gold);font-weight:900}.timeline{display:grid;gap:8px}.item{padding:11px;border:1px solid var(--line);border-radius:12px;background:#0d131b}.item strong{color:var(--gold)}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.recording{animation:pulse 1s infinite}@keyframes pulse{50%{opacity:.55}}a.download{display:block;text-align:center;padding:14px;border-radius:12px;background:var(--gold);color:#17120a;font-weight:900;text-decoration:none;margin-top:12px}
 </style>
 </head>
 <body><main class="wrap">
-<h1>限界開発 Vlog撮影</h1>
-<p class="hint">オープニング／エンディングをその場で撮影し、素材フォルダへ直接保存します。</p>
-<div class="panel">
+<h1>限界開発 Vlog Wizard</h1>
+<p class="lead">撮る、貼る、喋る、コンパイル。スマホだけでVlog素材を順番に組み立てます。</p>
+<div class="steps" id="steps"></div>
+
+<section class="panel" id="projectPanel">
+<h2>1. 新しいVlog</h2>
 <label for="project">プロジェクト名</label>
 <input id="project" value="vlog-001">
-<label for="role">素材の役割</label>
-<select id="role"><option value="opening">オープニング</option><option value="ending">エンディング</option><option value="camera">通常カメラ素材</option></select>
-</div>
-<div class="panel">
+<button id="begin">作成を始める</button>
+</section>
+
+<section class="panel hidden" id="materialPanel">
+<h2 id="materialTitle">素材を追加</h2>
+<p id="materialHelp" class="hint"></p>
+<label for="role">素材の種類</label>
+<select id="role">
+<option value="opening">オープニング動画</option>
+<option value="screen">画面収録</option>
+<option value="screenshot">スクリーンショット</option>
+<option value="camera">通常動画</option>
+<option value="ending">エンディング動画</option>
+</select>
+<label for="fileInput">すでにある素材を選ぶ</label>
+<input id="fileInput" type="file" accept="video/*,image/*">
+<div id="cameraArea">
 <video id="preview" autoplay playsinline muted></video>
-<button id="startCamera" class="secondary">カメラを起動</button>
-<button id="startRecord">録画開始</button>
-<button id="stopRecord" class="stop" disabled>録画停止</button>
-<button id="upload" disabled>この素材を保存</button>
-<p id="status" class="status">待機中</p>
+<button id="startCamera" class="secondary">インカメラを起動</button>
+<div class="row"><button id="startRecord">録画開始</button><button id="stopRecord" class="danger" disabled>録画停止</button></div>
 </div>
+<div id="descriptionArea" class="hidden">
+<label for="description">この画面は何を示していますか？</label>
+<textarea id="description" placeholder="例：GitHub上でVlog生成機能の仕様書を確認している画面です。AI解析は後で追加可能。今は自分で直せます。"></textarea>
+</div>
+<button id="saveMaterial" disabled>この素材を追加</button>
+<p id="materialStatus" class="status">待機中</p>
+</section>
+
+<section class="panel hidden" id="narrationPanel">
+<h2>3. スクリーンショットのナレーション</h2>
+<img id="shotPreview" alt="スクリーンショット">
+<p class="hint">表示中の画面について、そのまま喋ってください。録音時間に合わせて画像の表示時間を調整する設計です。</p>
+<label for="narrationHint">字幕・文字起こしの補助文</label>
+<textarea id="narrationHint" placeholder="録音前に話す内容をメモしても構いません"></textarea>
+<audio id="audioPreview" controls class="hidden" style="width:100%"></audio>
+<div class="row"><button id="startNarration">録音開始</button><button id="stopNarration" class="danger" disabled>録音停止</button></div>
+<button id="saveNarration" disabled>ナレーションを保存</button>
+<button id="skipNarration" class="secondary">今回は録音しない</button>
+<p id="narrationStatus" class="status">待機中</p>
+</section>
+
+<section class="panel hidden" id="continuePanel">
+<h2>4. 次はどうしますか？</h2>
+<div id="timeline" class="timeline"></div>
+<button id="addMore">素材を追加する</button>
+<button id="goEnding" class="secondary">エンディングを撮る・追加する</button>
+<button id="finish" class="ghost">素材追加を終了して確認へ</button>
+</section>
+
+<section class="panel hidden" id="compilePanel">
+<h2>5. 最終確認とコンパイル</h2>
+<div id="finalTimeline" class="timeline"></div>
+<p class="hint">オープニングとエンディングが必要です。通知、DM、個人情報、APIキー、非公開URLの映り込みを確認してください。</p>
+<label><input id="privacy" type="checkbox" style="width:auto"> 公開前の安全確認を行いました</label>
+<button id="compile" disabled>最終動画をコンパイル</button>
+<p id="compileStatus" class="status">待機中</p>
+<a id="download" class="download hidden">完成動画を開く</a>
+</section>
+</main>
 <script>
-const preview=document.querySelector('#preview');
-const statusEl=document.querySelector('#status');
-let stream=null, recorder=null, chunks=[], blob=null;
-function setStatus(v){statusEl.textContent=v}
-function bestMime(){const c=['video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9,opus','video/webm'];return c.find(x=>window.MediaRecorder&&MediaRecorder.isTypeSupported(x))||''}
-async function openCamera(){
-  if(stream)stream.getTracks().forEach(t=>t.stop());
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1920},height:{ideal:1080}},audio:true});
-  preview.srcObject=stream; setStatus('カメラ起動済み。録画できます。');
-}
-document.querySelector('#startCamera').onclick=()=>openCamera().catch(e=>setStatus('カメラ起動失敗: '+e.message));
-document.querySelector('#startRecord').onclick=async()=>{
-  if(!stream)await openCamera(); chunks=[]; blob=null;
-  const mime=bestMime(); recorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
-  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-  recorder.onstop=()=>{blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});preview.srcObject=null;preview.src=URL.createObjectURL(blob);preview.controls=true;document.querySelector('#upload').disabled=false;setStatus(`録画完了: ${(blob.size/1024/1024).toFixed(1)} MB`)};
-  recorder.start(1000);document.querySelector('#stopRecord').disabled=false;setStatus('録画中…');
-};
-document.querySelector('#stopRecord').onclick=()=>{if(recorder&&recorder.state!=='inactive')recorder.stop();document.querySelector('#stopRecord').disabled=true};
-document.querySelector('#upload').onclick=async()=>{
-  if(!blob)return; const fd=new FormData();fd.append('project',document.querySelector('#project').value);fd.append('role',document.querySelector('#role').value);fd.append('media',blob,'capture');
-  setStatus('保存中…');
-  const r=await fetch('/api/capture',{method:'POST',body:fd}); const data=await r.json();
-  if(!r.ok){setStatus('保存失敗: '+(data.detail||r.status));return}
-  setStatus(`保存しました\n${data.path}\n次の素材を撮るか、Vlogコンソールへ進めます。`);
-};
+const $=s=>document.querySelector(s);
+const state={project:'',timeline:[],blob:null,stream:null,recorder:null,chunks:[],currentItem:null,audioBlob:null,audioStream:null,audioRecorder:null,audioChunks:[]};
+const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'スクリーンショット',camera:'通常動画'};
+function show(id){['projectPanel','materialPanel','narrationPanel','continuePanel','compilePanel'].forEach(x=>$('#'+x).classList.add('hidden'));$('#'+id).classList.remove('hidden');}
+function steps(active){const names=['開始','素材','ナレーション','追加','完成'];$('#steps').innerHTML=names.map((n,i)=>`<span class="step ${i===active?'active':''}">${i+1}. ${n}</span>`).join('')}
+function status(el,msg){$(el).textContent=msg}
+function bestVideoMime(){return ['video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9,opus','video/webm'].find(x=>window.MediaRecorder&&MediaRecorder.isTypeSupported(x))||''}
+function bestAudioMime(){return ['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg'].find(x=>window.MediaRecorder&&MediaRecorder.isTypeSupported(x))||''}
+function renderTimeline(target='#timeline'){const box=$(target);box.innerHTML=state.timeline.length?state.timeline.map((x,i)=>`<div class="item"><strong>${i+1}. ${labels[x.role]||x.role}</strong><br><span>${x.source}</span>${x.description?`<br><small>${x.description}</small>`:''}${x.narration?'<br><small>🎙 ナレーションあり</small>':''}</div>`).join(''):'<p class="hint">まだ素材がありません。</p>'}
+async function loadProject(){const r=await fetch('/api/project/'+encodeURIComponent(state.project));if(r.ok){const d=await r.json();state.timeline=d.timeline||[]}}
+function resetMaterial(){state.blob=null;$('#fileInput').value='';$('#description').value='';$('#saveMaterial').disabled=true;$('#preview').src='';$('#preview').srcObject=null;$('#preview').controls=false;$('#descriptionArea').classList.toggle('hidden',$('#role').value!=='screenshot');}
+function prepareMaterial(role){show('materialPanel');steps(1);$('#role').value=role;resetMaterial();$('#materialTitle').textContent=role==='opening'?'オープニングを入れてください':role==='ending'?'エンディングを入れてください':'次の素材を追加してください';$('#materialHelp').textContent=role==='opening'||role==='ending'?'その場でインカメラ撮影するか、撮影済み動画を選べます。':'画面収録、スクリーンショット、通常動画を追加できます。';$('#cameraArea').classList.toggle('hidden',role==='screenshot');$('#descriptionArea').classList.toggle('hidden',role!=='screenshot');}
+$('#begin').onclick=async()=>{state.project=$('#project').value.trim();if(!state.project)return;await loadProject();prepareMaterial(state.timeline.some(x=>x.role==='opening')?'screen':'opening')};
+$('#role').onchange=()=>prepareMaterial($('#role').value);
+$('#fileInput').onchange=()=>{const f=$('#fileInput').files[0];if(!f)return;state.blob=f;$('#saveMaterial').disabled=false;if(f.type.startsWith('image/')){$('#descriptionArea').classList.remove('hidden');$('#cameraArea').classList.add('hidden');}else{$('#preview').src=URL.createObjectURL(f);$('#preview').controls=true;}status('#materialStatus',`選択済み: ${f.name}`)};
+$('#startCamera').onclick=async()=>{try{if(state.stream)state.stream.getTracks().forEach(t=>t.stop());state.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1920},height:{ideal:1080}},audio:true});$('#preview').srcObject=state.stream;$('#preview').controls=false;status('#materialStatus','カメラ起動済み')}catch(e){status('#materialStatus','カメラ起動失敗: '+e.message)}};
+$('#startRecord').onclick=async()=>{if(!state.stream)await $('#startCamera').onclick();state.chunks=[];const mime=bestVideoMime();state.recorder=new MediaRecorder(state.stream,mime?{mimeType:mime}:undefined);state.recorder.ondataavailable=e=>{if(e.data.size)state.chunks.push(e.data)};state.recorder.onstop=()=>{state.blob=new Blob(state.chunks,{type:state.recorder.mimeType||'video/webm'});$('#preview').srcObject=null;$('#preview').src=URL.createObjectURL(state.blob);$('#preview').controls=true;$('#saveMaterial').disabled=false;status('#materialStatus',`録画完了 ${(state.blob.size/1024/1024).toFixed(1)} MB`)};state.recorder.start(1000);$('#stopRecord').disabled=false;$('#startRecord').classList.add('recording');status('#materialStatus','録画中…')};
+$('#stopRecord').onclick=()=>{if(state.recorder&&state.recorder.state!=='inactive')state.recorder.stop();$('#stopRecord').disabled=true;$('#startRecord').classList.remove('recording')};
+$('#saveMaterial').onclick=async()=>{if(!state.blob)return;const fd=new FormData();fd.append('project',state.project);fd.append('role',$('#role').value);fd.append('description',$('#description').value);fd.append('media',state.blob,state.blob.name||'capture');status('#materialStatus','保存中…');const r=await fetch('/api/material',{method:'POST',body:fd});const d=await r.json();if(!r.ok){status('#materialStatus','保存失敗: '+(d.detail||r.status));return}state.timeline=d.timeline;state.currentItem=d.item;if(d.item.role==='screenshot'){const f=state.blob;$('#shotPreview').src=URL.createObjectURL(f);show('narrationPanel');steps(2);}else{show('continuePanel');steps(3);renderTimeline();}};
+$('#startNarration').onclick=async()=>{try{state.audioStream=await navigator.mediaDevices.getUserMedia({audio:true});state.audioChunks=[];const mime=bestAudioMime();state.audioRecorder=new MediaRecorder(state.audioStream,mime?{mimeType:mime}:undefined);state.audioRecorder.ondataavailable=e=>{if(e.data.size)state.audioChunks.push(e.data)};state.audioRecorder.onstop=()=>{state.audioBlob=new Blob(state.audioChunks,{type:state.audioRecorder.mimeType||'audio/webm'});$('#audioPreview').src=URL.createObjectURL(state.audioBlob);$('#audioPreview').classList.remove('hidden');$('#saveNarration').disabled=false;state.audioStream.getTracks().forEach(t=>t.stop());status('#narrationStatus','録音完了。再生して確認できます。')};state.audioRecorder.start(500);$('#stopNarration').disabled=false;status('#narrationStatus','ナレーション録音中…')}catch(e){status('#narrationStatus','マイク起動失敗: '+e.message)}};
+$('#stopNarration').onclick=()=>{if(state.audioRecorder&&state.audioRecorder.state!=='inactive')state.audioRecorder.stop();$('#stopNarration').disabled=true};
+$('#saveNarration').onclick=async()=>{const fd=new FormData();fd.append('project',state.project);fd.append('item_id',state.currentItem.id);fd.append('transcript_hint',$('#narrationHint').value);fd.append('media',state.audioBlob,'narration');status('#narrationStatus','保存中…');const r=await fetch('/api/narration',{method:'POST',body:fd});const d=await r.json();if(!r.ok){status('#narrationStatus','保存失敗: '+(d.detail||r.status));return}await loadProject();show('continuePanel');steps(3);renderTimeline()};
+$('#skipNarration').onclick=()=>{show('continuePanel');steps(3);renderTimeline()};
+$('#addMore').onclick=()=>prepareMaterial('screenshot');
+$('#goEnding').onclick=()=>prepareMaterial('ending');
+$('#finish').onclick=()=>{show('compilePanel');steps(4);renderTimeline('#finalTimeline')};
+$('#privacy').onchange=()=>$('#compile').disabled=!$('#privacy').checked;
+$('#compile').onclick=async()=>{const fd=new FormData();fd.append('project',state.project);fd.append('render','true');$('#compile').disabled=true;status('#compileStatus','文字起こし・字幕生成・動画コンパイル中です。数分かかる場合があります…');const r=await fetch('/api/compile',{method:'POST',body:fd});const d=await r.json();if(!r.ok){status('#compileStatus','失敗:\n'+(d.detail||r.status));$('#compile').disabled=false;return}status('#compileStatus','完成しました\n'+d.output);$('#download').href='/api/download/'+encodeURIComponent(state.project);$('#download').classList.remove('hidden')};
+steps(0);
 </script>
-</main></body></html>
+</body></html>
