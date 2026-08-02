@@ -73,6 +73,62 @@
     }
   }
 
+  function mediaKind(file) {
+    const type = String(file?.type || '').toLowerCase();
+    const name = String(file?.name || '').toLowerCase();
+    if (type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name)) return 'image';
+    if (type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/.test(name)) return 'video';
+    return 'unknown';
+  }
+
+  function expectedKind(role) {
+    return role === 'screenshot' ? 'image' : 'video';
+  }
+
+  function configureFileInput() {
+    const input = document.querySelector('#fileInput');
+    const role = document.querySelector('#role');
+    if (!input || !role) return;
+    const expected = expectedKind(role.value);
+    input.accept = expected === 'image' ? 'image/*' : 'video/*';
+  }
+
+  function rejectWrongFile(event) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    const role = document.querySelector('#role')?.value;
+    if (!file || !role) return;
+    const expected = expectedKind(role);
+    const actual = mediaKind(file);
+    if (actual === expected) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    input.value = '';
+    if (typeof state !== 'undefined') {
+      state.blob = null;
+      state.blobName = '';
+    }
+    const save = document.querySelector('#saveMaterial');
+    if (save) save.disabled = true;
+    const label = expected === 'image' ? '画像' : '動画';
+    setPanelStatus(`この素材種別には${label}ファイルだけを選べます。選択を取り消しました。`);
+  }
+
+  function installRoleGuards() {
+    const input = document.querySelector('#fileInput');
+    const role = document.querySelector('#role');
+    if (input && !input.dataset.rtsRoleGuard) {
+      input.dataset.rtsRoleGuard = '1';
+      input.addEventListener('change', rejectWrongFile, true);
+    }
+    if (role && !role.dataset.rtsRoleGuard) {
+      role.dataset.rtsRoleGuard = '1';
+      role.addEventListener('change', () => setTimeout(configureFileInput, 0));
+    }
+    configureFileInput();
+  }
+
   async function deleteSavedItem(itemId) {
     if (deleting || typeof state === 'undefined') return;
     const index = state.timeline.findIndex(item => String(item.id) === String(itemId));
@@ -88,11 +144,12 @@
 
     const body = new FormData();
     body.append('project', state.project);
+    body.append('action', 'delete');
     body.append('item_id', itemId);
 
     try {
       const response = await fetch(new URL('/api/material', location.origin), {
-        method: 'DELETE',
+        method: 'POST',
         body,
       });
       const data = await response.json().catch(() => ({}));
@@ -222,6 +279,7 @@
   function enhanceAll() {
     addStyles();
     addDiscardControls();
+    installRoleGuards();
     enhanceTimeline('#timeline');
     enhanceTimeline('#finalTimeline');
   }
