@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -14,11 +16,12 @@ import whisper
 
 DEFAULT_INPUT = Path("temp/voice_audio.wav")
 DEFAULT_OUTPUT = Path("temp/whisper_result.json")
+DEFAULT_MODELS = "large-v3,medium"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Transcribe audio with Whisper (large-v3 with medium fallback)."
+        description="Transcribe audio with Whisper using an ordered model fallback list."
     )
     parser.add_argument(
         "--input",
@@ -32,27 +35,26 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT,
         help=f"Output JSON path (default: {DEFAULT_OUTPUT})",
     )
+    parser.add_argument(
+        "--models",
+        default=os.environ.get("WHISPER_MODELS", DEFAULT_MODELS),
+        help=(
+            "Comma-separated models to try in order. "
+            "Defaults to WHISPER_MODELS or large-v3,medium. "
+            "For a low-memory test render, use small,base."
+        ),
+    )
     return parser.parse_args()
-
-
-def is_resource_constraint_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    markers = [
-        "out of memory",
-        "memory",
-        "cuda",
-        "mps",
-        "resource exhausted",
-        "std::bad_alloc",
-        "cublas",
-        "killed",
-    ]
-    return any(marker in message for marker in markers)
 
 
 def run_transcription(model_name: str, audio_path: Path) -> dict[str, Any]:
     model = whisper.load_model(model_name)
-    return model.transcribe(str(audio_path), language="ja", word_timestamps=True)
+    return model.transcribe(
+        str(audio_path),
+        language="ja",
+        word_timestamps=True,
+        fp16=False,
+    )
 
 
 def count_words(result: dict[str, Any]) -> int:
@@ -62,6 +64,13 @@ def count_words(result: dict[str, Any]) -> int:
         if isinstance(words, list):
             total_words += len(words)
     return total_words
+
+
+def parse_models(raw: str) -> list[str]:
+    models = [part.strip() for part in raw.split(",") if part.strip()]
+    if not models:
+        raise ValueError("At least one Whisper model is required")
+    return models
 
 
 def main() -> None:
@@ -77,29 +86,41 @@ def main() -> None:
         )
         sys.exit(1)
 
-    selected_model = "large-v3"
     try:
-        result = run_transcription("large-v3", input_audio)
-    except Exception as exc:
-        if is_resource_constraint_error(exc):
+        models = parse_models(args.models)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    result: dict[str, Any] | None = None
+    selected_model = ""
+    failures: list[str] = []
+
+    for index, model_name in enumerate(models):
+        print(
+            f"Whisper attempt {index + 1}/{len(models)}: {model_name}",
+            file=sys.stderr,
+            flush=True,
+        )
+        try:
+            result = run_transcription(model_name, input_audio)
+            selected_model = model_name
+            break
+        except Exception as exc:  # Retry every normal model/runtime failure.
+            detail = f"{type(exc).__name__}: {exc!r}"
+            failures.append(f"{model_name}: {detail}")
             print(
-                "WARN: large-v3 failed due to resource/runtime constraints; "
-                "retrying with medium.",
+                f"WARN: Whisper model {model_name} failed: {detail}",
                 file=sys.stderr,
+                flush=True,
             )
-            selected_model = "medium"
-            try:
-                result = run_transcription("medium", input_audio)
-            except Exception as medium_exc:
-                print(
-                    "ERROR: medium fallback transcription failed: "
-                    f"{medium_exc}",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-        else:
-            print(f"ERROR: large-v3 transcription failed: {exc}", file=sys.stderr)
-            sys.exit(1)
+            traceback.print_exc(file=sys.stderr)
+
+    if result is None:
+        print("ERROR: all Whisper transcription attempts failed.", file=sys.stderr)
+        for failure in failures:
+            print(f"  - {failure}", file=sys.stderr)
+        sys.exit(1)
 
     output_json.parent.mkdir(parents=True, exist_ok=True)
     with output_json.open("w", encoding="utf-8") as fh:
