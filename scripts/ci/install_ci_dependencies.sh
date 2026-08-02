@@ -28,6 +28,6 @@ npm install --no-audit --no-fund
 
 node --version
 npm --version
-npx remotion --version
-ffmpeg -version | head -n 1
-ffprobe -version | head -n 1
+npx remotion versions
+ffmpeg -version 2>&1 | sed -n '1p'
+ffprobe -version 2>&1 | sed -n '1p'
