@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${1:-}"
+RENDER_CONCURRENCY="${RENDER_CONCURRENCY:-1}"
 
 if [[ -z "${PROJECT_NAME}" ]]; then
   echo "Usage: ./scripts/render_vlog.sh vlog-001" >&2
@@ -28,10 +29,12 @@ mkdir -p "${OUTPUT_DIR}"
 echo "Before rendering, confirm the privacy checklist in:"
 echo "  ${OUTPUT_DIR}/NEXT_STEPS.md"
 echo
-echo "Rendering ${PROJECT_NAME}..."
+echo "Rendering ${PROJECT_NAME} with concurrency=${RENDER_CONCURRENCY}..."
 (
   cd "${REMOTION_DIR}"
-  npx remotion render src/index.ts VlogVideo "${OUTPUT_FILE}" --codec=h264
+  npx remotion render src/index.ts VlogVideo "${OUTPUT_FILE}" \
+    --codec=h264 \
+    --concurrency="${RENDER_CONCURRENCY}"
 )
 
 echo "Rendered: ${OUTPUT_FILE}"
