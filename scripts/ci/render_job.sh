@@ -19,19 +19,30 @@ fi
 mkdir -p "${LOG_DIR}"
 rm -f "${LOG_FILE}"
 
+AVAILABLE_CORES="$(nproc)"
+if [[ ! "${AVAILABLE_CORES}" =~ ^[0-9]+$ ]] || (( AVAILABLE_CORES < 1 )); then
+  AVAILABLE_CORES=1
+fi
+REQUESTED_CONCURRENCY="${RENDER_CONCURRENCY:-${AVAILABLE_CORES}}"
+if [[ ! "${REQUESTED_CONCURRENCY}" =~ ^[0-9]+$ ]] || (( REQUESTED_CONCURRENCY < 1 )); then
+  REQUESTED_CONCURRENCY=1
+fi
+if (( REQUESTED_CONCURRENCY > AVAILABLE_CORES )); then
+  REQUESTED_CONCURRENCY="${AVAILABLE_CORES}"
+fi
+export RENDER_CONCURRENCY="${REQUESTED_CONCURRENCY}"
+
 if [[ "${MODE}" == "preview" ]]; then
   export SKIP_TRANSCRIPTION=1
   export VIDEO_WIDTH=640
   export VIDEO_HEIGHT=360
   export VIDEO_FPS=10
-  export RENDER_CONCURRENCY="${RENDER_CONCURRENCY:-4}"
 else
   export SKIP_TRANSCRIPTION=0
   export VIDEO_WIDTH=1920
   export VIDEO_HEIGHT=1080
   export VIDEO_FPS=30
   export WHISPER_MODELS="${WHISPER_MODELS:-small,base}"
-  export RENDER_CONCURRENCY="${RENDER_CONCURRENCY:-4}"
 fi
 
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
@@ -42,6 +53,7 @@ export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}"
   echo "[job] project=${PROJECT}"
   echo "[job] mode=${MODE}"
   echo "[job] profile=${VIDEO_WIDTH}x${VIDEO_HEIGHT}@${VIDEO_FPS}"
+  echo "[job] available_cores=${AVAILABLE_CORES}"
   echo "[job] concurrency=${RENDER_CONCURRENCY}"
   bash "${ROOT_DIR}/scripts/process_vlog.sh" "projects/${PROJECT}"
   bash "${ROOT_DIR}/scripts/render_vlog.sh" "${PROJECT}"
