@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v"}
+VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
