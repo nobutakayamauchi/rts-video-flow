@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT_TAG='<script src="/static/delete_controls.js?v=20260802-2"></script>'
+SCRIPT_TAG='<script src="/static/delete_controls.js?v=20260802-3"></script>'
 FILES=(
   "${ROOT_DIR}/web_console/static/index.html"
   "${ROOT_DIR}/web_console/static/index-v2.html"
