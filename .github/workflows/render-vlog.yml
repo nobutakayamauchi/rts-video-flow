@@ -1,0 +1,178 @@
+name: Render Vlog
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Oracle render job ID created by create_render_job.sh
+        required: true
+        type: string
+      project:
+        description: Project name, for example 01
+        required: true
+        default: "01"
+        type: string
+      mode:
+        description: Render profile
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - final
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vlog-render-${{ inputs.project }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: ${{ inputs.mode }} / ${{ inputs.project }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      JOB_ID: ${{ inputs.job_id }}
+      PROJECT: ${{ inputs.project }}
+      MODE: ${{ inputs.mode }}
+      ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+      ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+      ORACLE_USER: ${{ secrets.ORACLE_USER }}
+      ORACLE_REPO_DIR: ${{ secrets.ORACLE_REPO_DIR }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate workflow inputs and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${JOB_ID}" =~ ^[A-Za-z0-9._-]{1,160}$ ]]
+          [[ "${PROJECT}" =~ ^[A-Za-z0-9._-]{1,80}$ ]]
+          [[ "${MODE}" == "preview" || "${MODE}" == "final" ]]
+          test -n "${ORACLE_HOST}"
+          test -n "${ORACLE_USER}"
+          test -n "${ORACLE_REPO_DIR}"
+          if [[ -z "${ORACLE_PORT}" ]]; then
+            echo "ORACLE_PORT=22" >> "${GITHUB_ENV}"
+          fi
+          test -n "${{ secrets.ORACLE_SSH_KEY }}"
+          test -n "${{ secrets.ORACLE_KNOWN_HOSTS }}"
+
+      - name: Install operating system tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg rsync
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Configure Oracle SSH access
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host oracle-render
+            HostName ${ORACLE_HOST}
+            User ${ORACLE_USER}
+            Port ${ORACLE_PORT}
+            IdentityFile ${HOME}/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+          ssh oracle-render 'echo "[ok] Oracle SSH connected"'
+
+      - name: Mark job as fetching
+        shell: bash
+        run: |
+          bash scripts/ci/update_render_status.sh \
+            "${JOB_ID}" "${PROJECT}" "${MODE}" \
+            running fetching "GitHub Actions is fetching the immutable job snapshot"
+
+      - name: Fetch immutable job snapshot
+        shell: bash
+        run: |
+          bash scripts/ci/fetch_render_job.sh "${JOB_ID}" "${PROJECT}"
+          python3 - ".ci-jobs/${JOB_ID}/job.json" "${MODE}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if payload.get("mode") != sys.argv[2]:
+              raise SystemExit(
+                  f"job mode mismatch: snapshot={payload.get('mode')} workflow={sys.argv[2]}"
+              )
+          PY
+
+      - name: Restore Whisper model cache
+        if: inputs.mode == 'final'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/whisper
+          key: whisper-${{ runner.os }}-small-v1
+
+      - name: Install render dependencies
+        shell: bash
+        run: |
+          bash scripts/ci/update_render_status.sh \
+            "${JOB_ID}" "${PROJECT}" "${MODE}" \
+            running setup "Installing mode-specific render dependencies"
+          bash scripts/ci/install_ci_dependencies.sh "${MODE}"
+
+      - name: Process and render Vlog
+        shell: bash
+        run: |
+          bash scripts/ci/update_render_status.sh \
+            "${JOB_ID}" "${PROJECT}" "${MODE}" \
+            running rendering "Processing media and rendering video"
+          bash scripts/ci/render_job.sh "${PROJECT}" "${MODE}"
+
+      - name: Return completed video to Oracle
+        shell: bash
+        run: |
+          bash scripts/ci/update_render_status.sh \
+            "${JOB_ID}" "${PROJECT}" "${MODE}" \
+            running publishing "Validating and returning the completed video"
+          bash scripts/ci/publish_render_job.sh \
+            "${JOB_ID}" \
+            "${PROJECT}" \
+            "output/${PROJECT}/vlog.mp4" \
+            ".ci-logs/render-${PROJECT}.log"
+
+      - name: Mark job complete
+        shell: bash
+        run: |
+          bash scripts/ci/update_render_status.sh \
+            "${JOB_ID}" "${PROJECT}" "${MODE}" \
+            completed done "Rendered video is available on Oracle"
+
+      - name: Mark job failed
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          bash scripts/ci/update_render_status.sh \
+            "${JOB_ID}" "${PROJECT}" "${MODE}" \
+            failed github-actions "GitHub Actions run failed; inspect the workflow log"
