@@ -44,29 +44,29 @@ if [[ -z "${PRIMARY_VIDEO}" ]]; then
   exit 1
 fi
 
-echo "[1/6] Building asset manifest"
+echo "[1/7] Building asset manifest"
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/build_vlog_manifest.py" \
   "${PROJECT_PATH}" --output "${OUTPUT_DIR}/manifest.json"
 
-echo "[2/6] Extracting audio from: ${PRIMARY_VIDEO}"
+echo "[2/7] Extracting audio from: ${PRIMARY_VIDEO}"
 ffmpeg -y -i "${PRIMARY_VIDEO}" -vn -ac 1 -ar 16000 "${WORK_DIR}/voice_audio.wav" >/dev/null 2>&1
 
-echo "[3/6] Transcribing Japanese speech"
+echo "[3/7] Transcribing Japanese speech"
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/transcribe.py" \
   --input "${WORK_DIR}/voice_audio.wav" \
   --output "${WORK_DIR}/whisper_result.json"
 
-echo "[4/6] Segmenting subtitles"
+echo "[4/7] Segmenting subtitles"
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/segment_subtitles.py" \
   --input "${WORK_DIR}/whisper_result.json" \
   --output "${WORK_DIR}/subtitles.json"
 
-echo "[5/6] Exporting SRT"
+echo "[5/7] Exporting SRT"
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/subtitles_to_srt.py" \
   --input "${WORK_DIR}/subtitles.json" \
   --output "${OUTPUT_DIR}/subtitles.srt"
 
-echo "[6/6] Exporting transcript"
+echo "[6/7] Exporting transcript"
 "${VENV_PYTHON}" - "${WORK_DIR}/whisper_result.json" "${OUTPUT_DIR}/transcript.md" <<'PY'
 import json
 import sys
@@ -80,6 +80,13 @@ target.write_text(f"# Transcript\n\n{text}\n", encoding="utf-8")
 print(f"Saved transcript: {target}")
 PY
 
+echo "[7/7] Preparing Remotion timeline and assets"
+"${VENV_PYTHON}" "${ROOT_DIR}/scripts/prepare_vlog_remotion.py" \
+  "${PROJECT_PATH}" \
+  --manifest "${OUTPUT_DIR}/manifest.json" \
+  --subtitles "${WORK_DIR}/subtitles.json" \
+  --remotion-dir "${ROOT_DIR}/remotion-project"
+
 cat > "${OUTPUT_DIR}/NEXT_STEPS.md" <<EOF
 # Next steps for ${PROJECT_NAME}
 
@@ -88,16 +95,23 @@ Generated automatically:
 - manifest.json
 - subtitles.srt
 - transcript.md
+- Remotion timeline and copied media assets
 
-Manual gate before rendering or publishing:
+Manual privacy gate before rendering or publishing:
 
 - [ ] Notifications, names, email addresses and account IDs are not visible
 - [ ] API keys, passwords and private URLs are not visible
 - [ ] Screen recording is limited to the necessary demonstration
 - [ ] Screenshot order in manifest.json is correct
 - [ ] Spoken content is safe to publish
+- [ ] Subtitle timing and wording are acceptable
 
-The first MVP intentionally stops before automatic publishing.
+After checking the items above, render with:
+
+    ./scripts/render_vlog.sh ${PROJECT_NAME}
+
+Automatic YouTube publishing remains intentionally out of scope for the MVP.
 EOF
 
-echo "Done: ${OUTPUT_DIR}"
+echo "Prepared: ${OUTPUT_DIR}"
+echo "Next: review NEXT_STEPS.md, then run ./scripts/render_vlog.sh ${PROJECT_NAME}"
