@@ -48,6 +48,9 @@ jobs:
 
       - name: Validate workflow inputs and secrets
         shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           [[ "${JOB_ID}" =~ ^[A-Za-z0-9._-]{1,160}$ ]]
@@ -56,11 +59,11 @@ jobs:
           test -n "${ORACLE_HOST}"
           test -n "${ORACLE_USER}"
           test -n "${ORACLE_REPO_DIR}"
+          test -n "${SSH_PRIVATE_KEY}"
+          test -n "${SSH_KNOWN_HOSTS}"
           if [[ -z "${ORACLE_PORT}" ]]; then
             echo "ORACLE_PORT=22" >> "${GITHUB_ENV}"
           fi
-          test -n "${{ secrets.ORACLE_SSH_KEY }}"
-          test -n "${{ secrets.ORACLE_KNOWN_HOSTS }}"
 
       - name: Install operating system tools
         shell: bash
