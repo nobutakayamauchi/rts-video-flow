@@ -2,32 +2,33 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INDEX_FILE="${ROOT_DIR}/web_console/static/index.html"
-SCRIPT_TAG='<script src="static/delete_controls.js?v=20260802-1"></script>'
+SCRIPT_TAG='<script src="/static/delete_controls.js?v=20260802-2"></script>'
+FILES=(
+  "${ROOT_DIR}/web_console/static/index.html"
+  "${ROOT_DIR}/web_console/static/index-v2.html"
+)
 
-if [[ ! -f "${INDEX_FILE}" ]]; then
-  echo "[error] index.html not found: ${INDEX_FILE}" >&2
-  exit 1
-fi
-
-python3 - "${INDEX_FILE}" "${SCRIPT_TAG}" <<'PY'
+python3 - "${SCRIPT_TAG}" "${FILES[@]}" <<'PY'
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
 
-path = Path(sys.argv[1])
-tag = sys.argv[2]
-text = path.read_text(encoding="utf-8")
-text = re.sub(
-    r'\s*<script src="static/delete_controls\.js\?v=[^"]+"></script>\s*',
-    "\n",
-    text,
-)
-if "</body>" not in text:
-    raise SystemExit("[error] </body> not found in index.html")
-text = text.replace("</body>", f"{tag}\n</body>", 1)
-path.write_text(text, encoding="utf-8")
-print("[ok] Inline delete controls installed")
+tag = sys.argv[1]
+paths = [Path(value) for value in sys.argv[2:]]
+for path in paths:
+    if not path.is_file():
+        raise SystemExit(f"[error] HTML file not found: {path}")
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(
+        r'\s*<script src="(?:/)?static/delete_controls\.js\?v=[^"]+"></script>\s*',
+        "\n",
+        text,
+    )
+    if "</body>" not in text:
+        raise SystemExit(f"[error] </body> not found in {path}")
+    text = text.replace("</body>", f"{tag}\n</body>", 1)
+    path.write_text(text, encoding="utf-8")
+    print(f"[ok] Inline delete controls installed: {path.name}")
 PY
