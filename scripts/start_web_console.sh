@@ -11,5 +11,5 @@ if [[ ! -x "${PYTHON}" ]]; then
 fi
 
 cd "${ROOT_DIR}"
-echo "RTS Vlog Web Console: http://${HOST}:${PORT}"
-exec "${PYTHON}" -m uvicorn web_console.app:app --host "${HOST}" --port "${PORT}"
+echo "RTS Vlog Web Console v2: http://${HOST}:${PORT}"
+exec "${PYTHON}" -m uvicorn web_console.app_v2:app --host "${HOST}" --port "${PORT}"
