@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v"}
+VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
