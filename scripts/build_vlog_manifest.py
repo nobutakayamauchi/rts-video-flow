@@ -30,6 +30,23 @@ def collect(directory: Path, extensions: set[str]) -> list[str]:
     ]
 
 
+def validate_timeline(project: Path, timeline: object) -> list[dict[str, object]]:
+    if not isinstance(timeline, list) or not timeline:
+        raise ValueError("timeline must be a non-empty list")
+    validated: list[dict[str, object]] = []
+    for index, item in enumerate(timeline):
+        if not isinstance(item, dict):
+            raise ValueError(f"timeline[{index}] must be an object")
+        source = item.get("source")
+        asset_type = item.get("type")
+        if not isinstance(source, str) or asset_type not in {"video", "image"}:
+            raise ValueError(f"timeline[{index}] has invalid type/source")
+        if not (project / source).is_file():
+            raise ValueError(f"timeline[{index}] source is missing: {source}")
+        validated.append(item)
+    return validated
+
+
 def main() -> None:
     args = parse_args()
     project = args.project.resolve()
@@ -42,30 +59,44 @@ def main() -> None:
     screen = collect(project / "screen", VIDEO_EXTENSIONS)
     screenshots = collect(project / "screenshots", IMAGE_EXTENSIONS)
 
-    timeline: list[dict[str, object]] = []
-    for asset in camera:
-        timeline.append({"type": "video", "source": asset, "role": "camera"})
-    for asset in screenshots:
-        timeline.append(
-            {
-                "type": "image",
-                "source": asset,
-                "role": "screenshot",
-                "durationSeconds": args.image_seconds,
-                "motion": "slow-pan",
-            }
-        )
-    for asset in screen:
-        timeline.append({"type": "video", "source": asset, "role": "screen-demo"})
+    plan_path = project / "vlog-plan.json"
+    if plan_path.is_file():
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            timeline = validate_timeline(project, plan.get("timeline"))
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(f"ERROR: invalid vlog-plan.json: {exc}", file=sys.stderr)
+            raise SystemExit(1)
+        policy = plan.get("policy") if isinstance(plan.get("policy"), dict) else {}
+        source_mode = "vlog-plan.json"
+    else:
+        timeline: list[dict[str, object]] = []
+        for asset in camera:
+            timeline.append({"type": "video", "source": asset, "role": "camera"})
+        for asset in screenshots:
+            timeline.append(
+                {
+                    "type": "image",
+                    "source": asset,
+                    "role": "screenshot",
+                    "durationSeconds": args.image_seconds,
+                    "motion": "slow-pan",
+                }
+            )
+        for asset in screen:
+            timeline.append({"type": "video", "source": asset, "role": "screen-demo"})
+        policy = {
+            "screenRecording": "short-demo-only",
+            "defaultEvidence": "screenshots",
+            "privacyReviewRequired": True,
+        }
+        source_mode = "folder-default"
 
     payload = {
         "version": 1,
         "project": project.name,
-        "policy": {
-            "screenRecording": "short-demo-only",
-            "defaultEvidence": "screenshots",
-            "privacyReviewRequired": True,
-        },
+        "sourceMode": source_mode,
+        "policy": policy,
         "assets": {
             "camera": camera,
             "screen": screen,
@@ -77,6 +108,8 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Saved manifest: {output}")
+    print(f"Timeline source: {source_mode}")
+    print(f"Timeline items: {len(timeline)}")
     print(f"Camera clips: {len(camera)}")
     print(f"Screen clips: {len(screen)}")
     print(f"Screenshots: {len(screenshots)}")
