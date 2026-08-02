@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>限界開発 Vlog ナレーション</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px 16px 80px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}h1{font-size:1.65rem}label{display:block;margin:10px 0 6px;font-weight:800}input,select,textarea,button{width:100%;font:inherit;border-radius:11px;padding:13px}input,select,textarea{background:#0d131b;color:#fff;border:1px solid #3a4b60}textarea{min-height:120px}button{border:0;background:var(--gold);font-weight:900;margin-top:10px}.secondary{background:var(--blue);color:#fff}.danger{background:var(--red)}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hint,.status{color:var(--muted);white-space:pre-wrap}.item{padding:11px;border:1px solid var(--line);border-radius:12px;margin:8px 0;background:#0d131b}.item button{margin-top:7px}audio{width:100%;margin-top:10px}.hidden{display:none!important}a{color:var(--gold)}
+</style></head>
+<body><main class="wrap">
+<h1>後撮りナレーション</h1>
+<p class="hint">無音の画面収録やスクリーンショットを選び、推奨秒数を見ながら台本を作り、その場で音声を吹き込みます。</p>
+<p><a href="/static/index.html">通常のVlog作成ウィザードへ</a></p>
+<section class="panel">
+<label>プロジェクト名</label><input id="project" value="vlog-001">
+<button id="load">素材を読み込む</button><p id="loadStatus" class="status"></p>
+<div id="timeline"></div>
+</section>
+<section id="editor" class="panel hidden">
+<h2 id="title">素材</h2>
+<p id="info" class="status"></p>
+<label>この場面は何を示しているか</label><textarea id="purpose" placeholder="例：iPhoneの画面収録機能を使い、実際の操作を記録している場面"></textarea>
+<button id="suggest" class="secondary">台本案を作る</button>
+<label>読み上げる台本</label><textarea id="script"></textarea>
+<label><input id="replace" type="checkbox" style="width:auto"> 元動画の音声を差し替える（未チェック時は上から重ねる）</label>
+<audio id="preview" controls class="hidden"></audio>
+<div class="row"><button id="record">録音開始</button><button id="stop" class="danger" disabled>録音停止</button></div>
+<button id="save" disabled>このナレーションを保存</button>
+<p id="status" class="status">待機中</p>
+</section>
+</main><script>
+const $=s=>document.querySelector(s);const state={project:'',timeline:[],item:null,stream:null,recorder:null,chunks:[],blob:null};
+const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'スクリーンショット',camera:'通常動画'};
+function setStatus(id,msg){$(id).textContent=msg}
+function bestAudioMime(){return ['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg'].find(x=>window.MediaRecorder&&MediaRecorder.isTypeSupported(x))||''}
+async function load(){state.project=$('#project').value.trim();const r=await fetch('/api/project/'+encodeURIComponent(state.project));const d=await r.json();if(!r.ok){setStatus('#loadStatus',d.detail||'読み込み失敗');return}state.timeline=d.timeline||[];$('#timeline').innerHTML=state.timeline.map((x,i)=>`<div class="item"><strong>${i+1}. ${labels[x.role]||x.role}</strong><br><small>${x.source}</small>${x.narration?'<br>🎙 ナレーションあり':''}<button data-id="${x.id}" class="secondary">後撮りする</button></div>`).join('')||'<p class="hint">素材がありません。</p>';document.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openItem(b.dataset.id));setStatus('#loadStatus',`${state.timeline.length}件読み込みました`)}
+async function openItem(id){state.item=state.timeline.find(x=>String(x.id)===String(id));const r=await fetch(`/api/media-info/${encodeURIComponent(state.project)}/${encodeURIComponent(id)}`);const d=await r.json();if(!r.ok){setStatus('#loadStatus',d.detail||'素材情報を取得できません');return}$('#editor').classList.remove('hidden');$('#title').textContent=`${labels[d.role]||d.role}の後撮り`;$('#purpose').value=d.description||'';$('#script').value=d.script||'';$('#info').textContent=`素材の長さ：約${d.durationSeconds}秒\n推奨ナレーション：約${d.recommendedNarrationSeconds}秒\n短く端的に、画面で何をしているかを説明してください。`;window.scrollTo({top:$('#editor').offsetTop-10,behavior:'smooth'})}
+$('#load').onclick=load;
+$('#suggest').onclick=async()=>{if(!state.item)return;const fd=new FormData();fd.append('project',state.project);fd.append('item_id',state.item.id);fd.append('purpose',$('#purpose').value);setStatus('#status','台本案を作成中…');const r=await fetch('/api/script-suggestion',{method:'POST',body:fd});const d=await r.json();if(!r.ok){setStatus('#status',d.detail||'台本作成失敗');return}$('#script').value=d.script;setStatus('#status',`台本案を作りました。目安 ${d.recommendedSeconds}秒です。`)};
+$('#record').onclick=async()=>{try{state.stream=await navigator.mediaDevices.getUserMedia({audio:true});state.chunks=[];const mime=bestAudioMime();state.recorder=new MediaRecorder(state.stream,mime?{mimeType:mime}:undefined);state.recorder.ondataavailable=e=>{if(e.data.size)state.chunks.push(e.data)};state.recorder.onstop=()=>{state.blob=new Blob(state.chunks,{type:state.recorder.mimeType||'audio/webm'});$('#preview').src=URL.createObjectURL(state.blob);$('#preview').classList.remove('hidden');$('#save').disabled=false;state.stream.getTracks().forEach(t=>t.stop());setStatus('#status','録音完了。再生して確認できます。')};state.recorder.start(500);$('#stop').disabled=false;setStatus('#status','録音中…')}catch(e){setStatus('#status','マイク起動失敗: '+e.message)}};
+$('#stop').onclick=()=>{if(state.recorder&&state.recorder.state!=='inactive')state.recorder.stop();$('#stop').disabled=true};
+$('#save').onclick=async()=>{if(!state.item||!state.blob)return;const fd=new FormData();fd.append('project',state.project);fd.append('item_id',state.item.id);fd.append('script',$('#script').value);fd.append('replace_original_audio',$('#replace').checked?'true':'false');fd.append('media',state.blob,'post-narration');setStatus('#status','保存中…');const r=await fetch('/api/post-narration',{method:'POST',body:fd});const d=await r.json();if(!r.ok){setStatus('#status',d.detail||'保存失敗');return}setStatus('#status',`保存しました。録音時間 ${d.item.narrationDurationSeconds}秒。コンパイル時に字幕も生成されます。`);await load()};
+</script></body></html>
