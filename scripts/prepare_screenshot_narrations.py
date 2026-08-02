@@ -10,10 +10,10 @@ Each screenshot timeline item may contain:
   narration: relative path to narration audio
   explanation: optional short on-screen explanation
 
-This script probes narration duration, transcribes each narration, converts the
-result into subtitle units, offsets subtitle timestamps to the screenshot's
-position in the full timeline, and writes an enriched manifest plus merged
-subtitle JSON.
+This script probes narration duration, optionally transcribes each narration,
+converts the result into subtitle units, offsets subtitle timestamps to the
+screenshot's position in the full timeline, and writes an enriched manifest
+plus merged subtitle JSON.
 """
 
 from __future__ import annotations
@@ -39,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--output-manifest", type=Path, required=True)
     parser.add_argument("--output-subtitles", type=Path, required=True)
+    parser.add_argument(
+        "--skip-transcription",
+        action="store_true",
+        help="Keep narration audio and timing but do not run Whisper or create narration subtitles.",
+    )
     return parser.parse_args()
 
 
@@ -122,22 +127,23 @@ def main() -> None:
                 item["durationSeconds"] = round(duration, 3)
                 item["narrationDuration"] = round(duration, 3)
 
-                work_prefix = args.work_dir / f"narration-{index:03d}"
-                whisper_json = work_prefix.with_suffix(".whisper.json")
-                subtitle_json = work_prefix.with_suffix(".subtitles.json")
-                run_transcription(args.python, narration_path, whisper_json, root)
-                run_segmentation(args.python, whisper_json, subtitle_json, root)
-                local_subtitles = load_json(subtitle_json)
-                if isinstance(local_subtitles, list):
-                    for local in local_subtitles:
-                        if not isinstance(local, dict):
-                            continue
-                        shifted = dict(local)
-                        shifted["id"] = len(merged_subtitles)
-                        shifted["start"] = round(cursor + float(local.get("start", 0.0)), 3)
-                        shifted["end"] = round(cursor + float(local.get("end", 0.0)), 3)
-                        shifted["sourceRole"] = "screenshot-narration"
-                        merged_subtitles.append(shifted)
+                if not args.skip_transcription:
+                    work_prefix = args.work_dir / f"narration-{index:03d}"
+                    whisper_json = work_prefix.with_suffix(".whisper.json")
+                    subtitle_json = work_prefix.with_suffix(".subtitles.json")
+                    run_transcription(args.python, narration_path, whisper_json, root)
+                    run_segmentation(args.python, whisper_json, subtitle_json, root)
+                    local_subtitles = load_json(subtitle_json)
+                    if isinstance(local_subtitles, list):
+                        for local in local_subtitles:
+                            if not isinstance(local, dict):
+                                continue
+                            shifted = dict(local)
+                            shifted["id"] = len(merged_subtitles)
+                            shifted["start"] = round(cursor + float(local.get("start", 0.0)), 3)
+                            shifted["end"] = round(cursor + float(local.get("end", 0.0)), 3)
+                            shifted["sourceRole"] = "screenshot-narration"
+                            merged_subtitles.append(shifted)
             else:
                 duration = max(0.5, float(item.get("durationSeconds", 5.0)))
         else:
@@ -150,6 +156,7 @@ def main() -> None:
 
     manifest["timeline"] = enriched
     manifest["totalDurationSeconds"] = round(cursor, 3)
+    manifest["transcriptionSkipped"] = bool(args.skip_transcription)
     args.output_manifest.parent.mkdir(parents=True, exist_ok=True)
     args.output_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     args.output_subtitles.parent.mkdir(parents=True, exist_ok=True)
@@ -157,6 +164,7 @@ def main() -> None:
 
     print(f"Prepared timeline items: {len(enriched)}")
     print(f"Narration subtitles: {len(merged_subtitles)}")
+    print(f"Transcription skipped: {args.skip_transcription}")
     print(f"Total duration: {cursor:.3f} sec")
     print(f"Saved manifest: {args.output_manifest}")
     print(f"Saved narration subtitles: {args.output_subtitles}")
