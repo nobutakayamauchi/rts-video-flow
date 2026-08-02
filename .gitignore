@@ -19,3 +19,10 @@ output/*
 !output/.gitkeep
 temp/*
 !temp/.gitkeep
+jobs/*
+!jobs/.gitkeep
+.ci-jobs/
+.ci-logs/
+
+# Local render logs
+render-*.log
