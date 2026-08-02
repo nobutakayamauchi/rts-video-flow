@@ -29,7 +29,7 @@ echo "[setup] upgrading pip"
 python -m pip install --upgrade pip
 
 echo "[setup] installing Python dependencies"
-python -m pip install torch silero-vad openai-whisper budoux
+python -m pip install torch silero-vad openai-whisper budoux fastapi uvicorn python-multipart
 
 require_cmd ffmpeg
 require_cmd ffprobe
