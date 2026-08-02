@@ -19,7 +19,8 @@ fi
 mkdir -p "${LOG_DIR}"
 rm -f "${LOG_FILE}"
 
-AVAILABLE_CORES="$(nproc)"
+# Remotion uses Node's CPU view, which can differ from `nproc` on hosted runners.
+AVAILABLE_CORES="$(node -e 'const os=require("os"); console.log(os.availableParallelism ? os.availableParallelism() : os.cpus().length)' 2>/dev/null || true)"
 if [[ ! "${AVAILABLE_CORES}" =~ ^[0-9]+$ ]] || (( AVAILABLE_CORES < 1 )); then
   AVAILABLE_CORES=1
 fi
@@ -29,6 +30,10 @@ if [[ ! "${REQUESTED_CONCURRENCY}" =~ ^[0-9]+$ ]] || (( REQUESTED_CONCURRENCY < 
 fi
 if (( REQUESTED_CONCURRENCY > AVAILABLE_CORES )); then
   REQUESTED_CONCURRENCY="${AVAILABLE_CORES}"
+fi
+# Current GitHub-hosted runner reports a Remotion maximum of 2.
+if (( REQUESTED_CONCURRENCY > 2 )); then
+  REQUESTED_CONCURRENCY=2
 fi
 export RENDER_CONCURRENCY="${REQUESTED_CONCURRENCY}"
 
