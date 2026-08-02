@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="${ROOT_DIR}/venv"
 REMOTION_DIR="${ROOT_DIR}/remotion-project"
+REMOTION_VERSION="4.0.366"
 
 require_cmd() {
   local cmd="$1"
@@ -47,19 +48,18 @@ mkdir -p "${REMOTION_DIR}"
 
 if [[ ! -f "${REMOTION_DIR}/package.json" ]]; then
   echo "[setup] creating remotion-project/package.json"
-  cat > "${REMOTION_DIR}/package.json" <<'JSON'
+  cat > "${REMOTION_DIR}/package.json" <<JSON
 {
   "name": "rts-video-flow-remotion",
   "private": true,
   "version": "0.1.0",
-  "scripts": {
-    "render": "remotion render MainVideo ../output/final.mp4"
-  },
+  "type": "module",
   "dependencies": {
-    "remotion": "^4.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@remotion/google-fonts": "^1.0.0"
+    "@remotion/cli": "${REMOTION_VERSION}",
+    "@remotion/google-fonts": "${REMOTION_VERSION}",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "${REMOTION_VERSION}"
   }
 }
 JSON
