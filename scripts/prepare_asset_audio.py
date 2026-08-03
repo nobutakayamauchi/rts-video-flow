@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Resolve per-asset audio, narration, timings, subtitles, and transcript.
+"""Resolve per-asset audio, narration patches, timings, subtitles, and transcript.
 
-This is the unified successor to screenshot-only narration processing.
-
-Supported audio modes:
+Supported whole-asset audio modes:
 - source: use the original video's audio
-- narration: mute the source video and use the attached narration
-- mute: do not use or transcribe audio
+- narration: mute the source video and use one attached narration
+- mute: do not use the source audio
 
-Images cannot use source audio. A narrated image is displayed for the narration
-duration. A narrated video keeps the source-video duration; narration longer
-than the source is rejected so speech is not silently truncated.
+Video items may also contain ``narrationSegments``. Each segment replaces only
+its selected source-audio interval with separate narration audio. Segment
+ranges are relative to the start of that source video and may not overlap.
 """
 
 from __future__ import annotations
@@ -24,6 +22,7 @@ from typing import Any
 
 AUDIO_MODES = {"source", "narration", "mute"}
 SUBTITLE_MODES = {"auto", "none"}
+SEGMENT_MODES = {"replace"}
 
 
 def fail(message: str) -> None:
@@ -59,7 +58,9 @@ def load_json(path: Path) -> Any:
         fail(f"Malformed JSON in {path}: {exc}")
 
 
-def run_checked(command: list[str], *, capture_output: bool = False) -> subprocess.CompletedProcess[str]:
+def run_checked(
+    command: list[str], *, capture_output: bool = False
+) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             command,
@@ -174,6 +175,102 @@ def default_subtitle_mode(item: dict[str, Any], audio_mode: str) -> str:
     return "auto" if audio_mode != "mute" else "none"
 
 
+def ranges_overlap(start_a: float, end_a: float, start_b: float, end_b: float) -> bool:
+    return start_a < end_b and start_b < end_a
+
+
+def normalize_narration_segments(
+    raw_segments: object,
+    *,
+    asset_id: str,
+    duration: float,
+) -> list[dict[str, Any]]:
+    if raw_segments in (None, []):
+        return []
+    if not isinstance(raw_segments, list):
+        raise ValueError("narrationSegments must be a list")
+
+    normalized: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_segments):
+        if not isinstance(raw, dict):
+            raise ValueError(f"narrationSegments[{index}] must be an object")
+        narration = raw.get("narration")
+        if not isinstance(narration, str) or not narration.strip():
+            raise ValueError(f"narrationSegments[{index}] requires narration")
+        try:
+            start = round(float(raw.get("startSeconds")), 3)
+            end = round(float(raw.get("endSeconds")), 3)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"narrationSegments[{index}] requires numeric startSeconds/endSeconds"
+            ) from None
+        if start < 0 or end <= start:
+            raise ValueError(f"narrationSegments[{index}] has an invalid range")
+        if end > duration + 0.05:
+            raise ValueError(
+                f"narrationSegments[{index}] ends after the video: {end:.3f} > {duration:.3f}"
+            )
+        mode = str(raw.get("mode", "replace"))
+        if mode not in SEGMENT_MODES:
+            raise ValueError(f"narrationSegments[{index}] has unsupported mode: {mode}")
+        subtitle_mode = str(raw.get("subtitleMode", "auto"))
+        if subtitle_mode not in SUBTITLE_MODES:
+            raise ValueError(
+                f"narrationSegments[{index}] has unsupported subtitleMode: {subtitle_mode}"
+            )
+        normalized.append(
+            {
+                **raw,
+                "id": str(raw.get("id") or f"{asset_id}-segment-{index + 1:03d}"),
+                "startSeconds": start,
+                "endSeconds": end,
+                "mode": mode,
+                "subtitleMode": subtitle_mode,
+                "narration": narration.strip(),
+            }
+        )
+
+    normalized.sort(key=lambda segment: (segment["startSeconds"], segment["endSeconds"]))
+    seen_ids: set[str] = set()
+    previous: dict[str, Any] | None = None
+    for segment in normalized:
+        segment_id = str(segment["id"])
+        if segment_id in seen_ids:
+            raise ValueError(f"Duplicate narration segment id: {segment_id}")
+        seen_ids.add(segment_id)
+        if previous and ranges_overlap(
+            float(previous["startSeconds"]),
+            float(previous["endSeconds"]),
+            float(segment["startSeconds"]),
+            float(segment["endSeconds"]),
+        ):
+            raise ValueError(
+                "Narration segments may not overlap: "
+                f"{previous['id']} and {segment['id']}"
+            )
+        previous = segment
+    return normalized
+
+
+def subtitle_overlaps_ranges(
+    subtitle: dict[str, Any], ranges: list[dict[str, Any]]
+) -> bool:
+    try:
+        start = float(subtitle.get("start", 0.0))
+        end = float(subtitle.get("end", start))
+    except (TypeError, ValueError):
+        return False
+    return any(
+        ranges_overlap(
+            start,
+            end,
+            float(segment["startSeconds"]),
+            float(segment["endSeconds"]),
+        )
+        for segment in ranges
+    )
+
+
 def append_shifted_subtitles(
     merged: list[dict[str, Any]],
     local_subtitles: Any,
@@ -181,19 +278,47 @@ def append_shifted_subtitles(
     cursor: float,
     asset_id: str,
     source_role: str,
+    local_offset: float = 0.0,
+    excluded_ranges: list[dict[str, Any]] | None = None,
 ) -> None:
     if not isinstance(local_subtitles, list):
         return
     for local in local_subtitles:
         if not isinstance(local, dict):
             continue
+        if excluded_ranges and subtitle_overlaps_ranges(local, excluded_ranges):
+            continue
         shifted = dict(local)
         shifted["id"] = len(merged)
-        shifted["start"] = round(cursor + float(local.get("start", 0.0)), 3)
-        shifted["end"] = round(cursor + float(local.get("end", 0.0)), 3)
+        shifted["start"] = round(
+            cursor + local_offset + float(local.get("start", 0.0)), 3
+        )
+        shifted["end"] = round(
+            cursor + local_offset + float(local.get("end", 0.0)), 3
+        )
         shifted["assetId"] = asset_id
         shifted["sourceRole"] = source_role
         merged.append(shifted)
+
+
+def transcribe_audio(
+    *,
+    python: Path,
+    audio: Path,
+    prefix: Path,
+    root: Path,
+) -> tuple[Any, Any]:
+    whisper_json = prefix.with_suffix(".whisper.json")
+    subtitle_json = prefix.with_suffix(".subtitles.json")
+    run_transcription(python, audio, whisper_json, root)
+    run_segmentation(python, whisper_json, subtitle_json, root)
+    return load_json(whisper_json), load_json(subtitle_json)
+
+
+def transcript_text(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("text", "")).strip()
 
 
 def main() -> None:
@@ -237,6 +362,14 @@ def main() -> None:
         item["subtitleMode"] = subtitle_mode
 
         source_duration = probe_duration(source) if asset_type == "video" else None
+        duration = (
+            source_duration
+            if source_duration is not None
+            else max(0.5, float(item.get("durationSeconds", 5.0)))
+        )
+        if source_duration is not None:
+            item["sourceDuration"] = round(source_duration, 3)
+
         narration_path: Path | None = None
         narration_duration: float | None = None
         narration_value = item.get("narration")
@@ -247,8 +380,52 @@ def main() -> None:
             narration_duration = probe_duration(narration_path)
             item["narrationDuration"] = round(narration_duration, 3)
 
-        audio_for_transcription: Path | None = None
+        try:
+            segments = normalize_narration_segments(
+                item.get("narrationSegments"),
+                asset_id=asset_id,
+                duration=duration,
+            )
+        except ValueError as exc:
+            fail(f"Invalid narration segments for {asset_id}: {exc}")
+        if asset_type == "image" and segments:
+            fail(f"Range narration is only supported for video assets: {asset_id}")
+        if audio_mode == "narration" and segments:
+            fail(
+                f"Whole-asset narration and range narration cannot be combined: {asset_id}"
+            )
+
         item_warnings: list[str] = []
+        prepared_segments: list[dict[str, Any]] = []
+        for segment_index, segment in enumerate(segments):
+            segment_item = dict(segment)
+            segment_path = project / str(segment_item["narration"])
+            if not segment_path.is_file():
+                fail(f"Missing segment narration audio: {segment_path}")
+            segment_duration = probe_duration(segment_path)
+            range_duration = float(segment_item["endSeconds"]) - float(
+                segment_item["startSeconds"]
+            )
+            if segment_duration > range_duration + 0.25:
+                fail(
+                    "Segment narration is longer than its selected range: "
+                    f"{segment_item['id']} narration={segment_duration:.3f}s "
+                    f"range={range_duration:.3f}s"
+                )
+            segment_item["narrationDuration"] = round(segment_duration, 3)
+            if segment_duration + 0.75 < range_duration:
+                message = (
+                    "Segment narration ends before its selected range; the remaining "
+                    "part of that range will be silent."
+                )
+                segment_item["audioWarnings"] = [message]
+                item_warnings.append(f"{segment_item['id']}: {message}")
+            prepared_segments.append(segment_item)
+
+        if prepared_segments:
+            item["narrationSegments"] = prepared_segments
+        else:
+            item.pop("narrationSegments", None)
 
         if asset_type == "image":
             if audio_mode == "source":
@@ -257,20 +434,13 @@ def main() -> None:
                 item["audioMode"] = audio_mode
                 item["subtitleMode"] = subtitle_mode
                 item_warnings.append("Images cannot use source audio; changed to mute.")
-
             if audio_mode == "narration":
                 if narration_path is None or narration_duration is None:
                     fail(f"Narration mode requires narration audio: {asset_id}")
                 duration = narration_duration
                 item["durationSeconds"] = round(duration, 3)
-                audio_for_transcription = narration_path
-            else:
-                duration = max(0.5, float(item.get("durationSeconds", 5.0)))
         else:
             assert source_duration is not None
-            duration = source_duration
-            item["sourceDuration"] = round(source_duration, 3)
-
             if audio_mode == "narration":
                 if narration_path is None or narration_duration is None:
                     fail(f"Narration mode requires narration audio: {asset_id}")
@@ -284,18 +454,10 @@ def main() -> None:
                     item_warnings.append(
                         "Narration ends before the video; the remaining tail will be silent."
                     )
-                audio_for_transcription = narration_path
-            elif audio_mode == "source":
-                if has_audio_stream(source):
-                    extracted = args.work_dir / f"asset-{index:03d}-source.wav"
-                    extract_audio(source, extracted)
-                    audio_for_transcription = extracted
-                else:
-                    item_warnings.append(
-                        "Source audio mode selected, but the video has no audio stream."
-                    )
-            elif audio_mode == "mute":
-                audio_for_transcription = None
+            elif audio_mode == "source" and not has_audio_stream(source):
+                item_warnings.append(
+                    "Source audio mode selected, but the video has no audio stream."
+                )
 
         item["timelineStart"] = round(cursor, 3)
         item["resolvedDuration"] = round(duration, 3)
@@ -304,39 +466,80 @@ def main() -> None:
             item["audioWarnings"] = item_warnings
             for message in item_warnings:
                 warnings.append({"assetId": asset_id, "message": message})
+        else:
+            item.pop("audioWarnings", None)
 
-        if (
-            audio_for_transcription is not None
-            and subtitle_mode == "auto"
-            and not args.skip_transcription
-        ):
-            prefix = args.work_dir / f"asset-{index:03d}"
-            whisper_json = prefix.with_suffix(".whisper.json")
-            subtitle_json = prefix.with_suffix(".subtitles.json")
-            run_transcription(args.python, audio_for_transcription, whisper_json, root)
-            run_segmentation(args.python, whisper_json, subtitle_json, root)
+        if not args.skip_transcription:
+            if asset_type == "video" and audio_mode == "source" and has_audio_stream(source):
+                extracted = args.work_dir / f"asset-{index:03d}-source.wav"
+                extract_audio(source, extracted)
+                whisper_payload, local_subtitles = transcribe_audio(
+                    python=args.python,
+                    audio=extracted,
+                    prefix=args.work_dir / f"asset-{index:03d}-source",
+                    root=root,
+                )
+                if subtitle_mode == "auto":
+                    append_shifted_subtitles(
+                        merged_subtitles,
+                        local_subtitles,
+                        cursor=cursor,
+                        asset_id=asset_id,
+                        source_role=f"{role}-source",
+                        excluded_ranges=prepared_segments,
+                    )
+                transcript_sections.append(
+                    f"## {index + 1}. {role} ({asset_id}) — source\n\n"
+                    f"{transcript_text(whisper_payload) or '_No speech detected._'}\n"
+                )
+            elif audio_mode == "narration" and narration_path is not None:
+                whisper_payload, local_subtitles = transcribe_audio(
+                    python=args.python,
+                    audio=narration_path,
+                    prefix=args.work_dir / f"asset-{index:03d}-narration",
+                    root=root,
+                )
+                if subtitle_mode == "auto":
+                    append_shifted_subtitles(
+                        merged_subtitles,
+                        local_subtitles,
+                        cursor=cursor,
+                        asset_id=asset_id,
+                        source_role=f"{role}-narration",
+                    )
+                transcript_sections.append(
+                    f"## {index + 1}. {role} ({asset_id}) — narration\n\n"
+                    f"{transcript_text(whisper_payload) or '_No speech detected._'}\n"
+                )
 
-            whisper_payload = load_json(whisper_json)
-            local_subtitles = load_json(subtitle_json)
-            append_shifted_subtitles(
-                merged_subtitles,
-                local_subtitles,
-                cursor=cursor,
-                asset_id=asset_id,
-                source_role=f"{role}-{audio_mode}",
-            )
-
-            text = ""
-            if isinstance(whisper_payload, dict):
-                text = str(whisper_payload.get("text", "")).strip()
-            transcript_sections.append(
-                f"## {index + 1}. {role} ({asset_id})\n\n{text or '_No speech detected._'}\n"
-            )
+            for segment_index, segment in enumerate(prepared_segments):
+                segment_path = project / str(segment["narration"])
+                whisper_payload, local_subtitles = transcribe_audio(
+                    python=args.python,
+                    audio=segment_path,
+                    prefix=args.work_dir
+                    / f"asset-{index:03d}-segment-{segment_index:03d}",
+                    root=root,
+                )
+                if segment.get("subtitleMode", "auto") == "auto":
+                    append_shifted_subtitles(
+                        merged_subtitles,
+                        local_subtitles,
+                        cursor=cursor,
+                        local_offset=float(segment["startSeconds"]),
+                        asset_id=asset_id,
+                        source_role=f"{role}-range-narration",
+                    )
+                transcript_sections.append(
+                    f"### Range {segment['startSeconds']:.3f}–{segment['endSeconds']:.3f}s "
+                    f"({segment['id']})\n\n"
+                    f"{transcript_text(whisper_payload) or '_No speech detected._'}\n"
+                )
 
         enriched.append(item)
         cursor += duration
 
-    manifest["version"] = max(2, int(manifest.get("version", 1)))
+    manifest["version"] = max(3, int(manifest.get("version", 1)))
     manifest["timeline"] = enriched
     manifest["totalDurationSeconds"] = round(cursor, 3)
     manifest["transcriptionSkipped"] = bool(args.skip_transcription)
@@ -344,20 +547,20 @@ def main() -> None:
 
     args.output_manifest.parent.mkdir(parents=True, exist_ok=True)
     args.output_manifest.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     args.output_subtitles.parent.mkdir(parents=True, exist_ok=True)
     args.output_subtitles.write_text(
-        json.dumps(merged_subtitles, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+        json.dumps(merged_subtitles, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
     if args.skip_transcription:
         transcript_body = "# Transcript\n\nPreview mode: transcription was skipped.\n"
     else:
         transcript_body = "# Transcript\n\n"
-        transcript_body += "\n".join(transcript_sections) or "_No transcribable audio found._\n"
+        transcript_body += (
+            "\n".join(transcript_sections) or "_No transcribable audio found._\n"
+        )
     args.output_transcript.parent.mkdir(parents=True, exist_ok=True)
     args.output_transcript.write_text(transcript_body, encoding="utf-8")
 
