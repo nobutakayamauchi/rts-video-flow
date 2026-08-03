@@ -108,9 +108,22 @@ def build(project: Path, manifest: dict[str, Any], public: Path) -> tuple[list[d
             narration_name = f"narration-{index:03d}{narration_path.suffix.lower() or '.webm'}"
             shutil.copy2(narration_path, public / narration_name)
 
+        audio_mode = str(
+            item.get(
+                "audioMode",
+                "narration" if narration_name else ("source" if asset_type == "video" else "mute"),
+            )
+        )
+        if audio_mode not in {"source", "narration", "mute"}:
+            fail(f"Invalid audio mode for timeline item {index}: {audio_mode}")
+        if asset_type == "image" and audio_mode == "source":
+            audio_mode = "mute"
+        if audio_mode == "narration" and narration_name is None:
+            fail(f"Narration mode is missing narration audio for timeline item {index}")
+
         output.append(
             {
-                "id": index,
+                "id": str(item.get("id") or index),
                 "type": asset_type,
                 "role": str(item.get("role", "asset")),
                 "src": name,
@@ -118,6 +131,7 @@ def build(project: Path, manifest: dict[str, Any], public: Path) -> tuple[list[d
                 "duration": round(duration, 3),
                 "motion": str(item.get("motion", "none")),
                 "narration": narration_name,
+                "audioMode": audio_mode,
                 "explanation": str(item.get("explanation", "")).strip(),
             }
         )
@@ -152,7 +166,7 @@ import {{AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, interpolate, static
 import timeline from "../public/vlog/timeline.json";
 import subtitles from "../public/vlog/subtitles.json";
 
-type T = {{id:number;type:"video"|"image";role:string;src:string;start:number;duration:number;motion:string;narration:string|null;explanation:string}};
+type T = {{id:string;type:"video"|"image";role:string;src:string;start:number;duration:number;motion:string;narration:string|null;audioMode:"source"|"narration"|"mute";explanation:string}};
 type S = {{id:number;start:number;end:number;lines:string[];fontSize:number}};
 
 const FPS = {fps};
@@ -190,11 +204,17 @@ export const VlogVideo: React.FC = () => {{
         return (
           <Sequence key={{item.id}} from={{from}} durationInFrames={{duration}}>
             {{item.type === "video" ? (
-              <OffthreadVideo src={{staticFile(`vlog/assets/${{item.src}}`)}} style={{{{width:"100%",height:"100%",objectFit:"contain"}}}} />
+              <OffthreadVideo
+                src={{staticFile(`vlog/assets/${{item.src}}`)}}
+                muted={{item.audioMode !== "source"}}
+                style={{{{width:"100%",height:"100%",objectFit:"contain"}}}}
+              />
             ) : (
               <Still item={{item}} />
             )}}
-            {{item.narration && <Audio src={{staticFile(`vlog/assets/${{item.narration}}`)}} />}}
+            {{item.audioMode === "narration" && item.narration && (
+              <Audio src={{staticFile(`vlog/assets/${{item.narration}}`)}} />
+            )}}
           </Sequence>
         );
       }})}}
