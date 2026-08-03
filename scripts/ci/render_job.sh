@@ -57,11 +57,20 @@ export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}"
 {
   echo "[job] project=${PROJECT}"
   echo "[job] mode=${MODE}"
+  echo "[job] git_ref=${GITHUB_REF:-local}"
+  echo "[job] git_sha=${GITHUB_SHA:-$(git -C "${ROOT_DIR}" rev-parse HEAD 2>/dev/null || echo unknown)}"
   echo "[job] profile=${VIDEO_WIDTH}x${VIDEO_HEIGHT}@${VIDEO_FPS}"
   echo "[job] available_cores=${AVAILABLE_CORES}"
   echo "[job] concurrency=${RENDER_CONCURRENCY}"
   bash "${ROOT_DIR}/scripts/process_vlog.sh" "projects/${PROJECT}"
   bash "${ROOT_DIR}/scripts/render_vlog.sh" "${PROJECT}"
+
+  if [[ "${PROJECT}" == *segment-smoke* ]]; then
+    python3 "${ROOT_DIR}/scripts/verify_segment_smoke_output.py" \
+      --manifest "${ROOT_DIR}/output/${PROJECT}/manifest.json" \
+      --video "${ROOT_DIR}/output/${PROJECT}/vlog.mp4" \
+      --expected-frequency 880
+  fi
 } 2>&1 | tee "${LOG_FILE}"
 
 OUTPUT_FILE="${ROOT_DIR}/output/${PROJECT}/vlog.mp4"
