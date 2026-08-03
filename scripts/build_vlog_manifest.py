@@ -7,9 +7,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+AUDIO_MODES = {"source", "narration", "mute"}
+SUBTITLE_MODES = {"auto", "none"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,19 +33,66 @@ def collect(directory: Path, extensions: set[str]) -> list[str]:
     ]
 
 
-def validate_timeline(project: Path, timeline: object) -> list[dict[str, object]]:
+def default_audio_mode(item: dict[str, Any], asset_type: str) -> str:
+    value = item.get("audioMode")
+    if isinstance(value, str) and value in AUDIO_MODES:
+        return value
+    narration = item.get("narration")
+    if isinstance(narration, str) and narration.strip():
+        return "narration"
+    return "source" if asset_type == "video" else "mute"
+
+
+def default_subtitle_mode(item: dict[str, Any], audio_mode: str) -> str:
+    value = item.get("subtitleMode")
+    if isinstance(value, str) and value in SUBTITLE_MODES:
+        return value
+    return "auto" if audio_mode != "mute" else "none"
+
+
+def normalize_item(project: Path, raw: dict[str, Any], index: int) -> dict[str, Any]:
+    item = dict(raw)
+    source = item.get("source")
+    asset_type = item.get("type")
+    if not isinstance(source, str) or asset_type not in {"video", "image"}:
+        raise ValueError(f"timeline[{index}] has invalid type/source")
+    if not (project / source).is_file():
+        raise ValueError(f"timeline[{index}] source is missing: {source}")
+
+    narration = item.get("narration")
+    if narration is not None:
+        if not isinstance(narration, str) or not narration.strip():
+            item.pop("narration", None)
+        elif not (project / narration).is_file():
+            raise ValueError(f"timeline[{index}] narration is missing: {narration}")
+
+    item["id"] = str(item.get("id") or f"asset-{index + 1:03d}")
+    audio_mode = default_audio_mode(item, asset_type)
+    if asset_type == "image" and audio_mode == "source":
+        audio_mode = "mute"
+    item["audioMode"] = audio_mode
+    item["subtitleMode"] = default_subtitle_mode(item, audio_mode)
+
+    if asset_type == "image":
+        item["durationSeconds"] = max(0.5, float(item.get("durationSeconds", 5.0)))
+        item.setdefault("motion", "slow-pan")
+
+    return item
+
+
+def validate_timeline(project: Path, timeline: object) -> list[dict[str, Any]]:
     if not isinstance(timeline, list) or not timeline:
         raise ValueError("timeline must be a non-empty list")
-    validated: list[dict[str, object]] = []
-    for index, item in enumerate(timeline):
-        if not isinstance(item, dict):
+    validated: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(timeline):
+        if not isinstance(raw, dict):
             raise ValueError(f"timeline[{index}] must be an object")
-        source = item.get("source")
-        asset_type = item.get("type")
-        if not isinstance(source, str) or asset_type not in {"video", "image"}:
-            raise ValueError(f"timeline[{index}] has invalid type/source")
-        if not (project / source).is_file():
-            raise ValueError(f"timeline[{index}] source is missing: {source}")
+        item = normalize_item(project, raw, index)
+        asset_id = str(item["id"])
+        if asset_id in seen_ids:
+            raise ValueError(f"timeline[{index}] duplicates asset id: {asset_id}")
+        seen_ids.add(asset_id)
         validated.append(item)
     return validated
 
@@ -70,11 +120,11 @@ def main() -> None:
         policy = plan.get("policy") if isinstance(plan.get("policy"), dict) else {}
         source_mode = "vlog-plan.json"
     else:
-        timeline: list[dict[str, object]] = []
+        raw_timeline: list[dict[str, Any]] = []
         for asset in camera:
-            timeline.append({"type": "video", "source": asset, "role": "camera"})
+            raw_timeline.append({"type": "video", "source": asset, "role": "camera"})
         for asset in screenshots:
-            timeline.append(
+            raw_timeline.append(
                 {
                     "type": "image",
                     "source": asset,
@@ -84,7 +134,14 @@ def main() -> None:
                 }
             )
         for asset in screen:
-            timeline.append({"type": "video", "source": asset, "role": "screen-demo"})
+            raw_timeline.append({"type": "video", "source": asset, "role": "screen-demo"})
+        if not raw_timeline:
+            print("ERROR: no supported media found in project", file=sys.stderr)
+            raise SystemExit(1)
+        timeline = [
+            normalize_item(project, raw, index)
+            for index, raw in enumerate(raw_timeline)
+        ]
         policy = {
             "screenRecording": "short-demo-only",
             "defaultEvidence": "screenshots",
@@ -93,7 +150,7 @@ def main() -> None:
         source_mode = "folder-default"
 
     payload = {
-        "version": 1,
+        "version": 2,
         "project": project.name,
         "sourceMode": source_mode,
         "policy": policy,
