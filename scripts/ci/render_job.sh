@@ -15,6 +15,10 @@ if [[ "${MODE}" != "preview" && "${MODE}" != "final" ]]; then
   echo "[error] Mode must be preview or final" >&2
   exit 2
 fi
+if [[ "${PROJECT}" == *segment-smoke* ]]; then
+  echo "[error] Segment smoke projects must run from feat/narration-segments-v1" >&2
+  exit 3
+fi
 
 mkdir -p "${LOG_DIR}"
 rm -f "${LOG_FILE}"
