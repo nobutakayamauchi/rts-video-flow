@@ -75,7 +75,7 @@ def plan_path(project_path: Path) -> Path:
 
 def default_plan(name: str) -> dict[str, Any]:
     return {
-        "version": 4,
+        "version": 5,
         "project": name,
         "policy": {
             "screenRecording": "short-demo-only",
@@ -101,7 +101,7 @@ def load_plan(project_path: Path) -> dict[str, Any]:
 
 def save_plan(project_path: Path, plan: dict[str, Any]) -> None:
     project_path.mkdir(parents=True, exist_ok=True)
-    plan["version"] = max(4, int(plan.get("version", 1)))
+    plan["version"] = max(5, int(plan.get("version", 1)))
     plan_path(project_path).write_text(
         json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -177,10 +177,18 @@ def move_path_to_trash(project_path: Path, target: Path) -> str | None:
 
 
 def move_item_files_to_trash(project_path: Path, item: dict[str, Any]) -> list[str]:
-    """Soft-delete source and narration files so mistakes remain recoverable."""
+    """Soft-delete source, whole narration, and range narration files."""
     moved: list[str] = []
-    for key in ("source", "narration"):
-        target = resolve_project_file(project_path, item.get(key))
+    references: list[object] = [item.get("source"), item.get("narration")]
+    segments = item.get("narrationSegments")
+    if isinstance(segments, list):
+        references.extend(
+            segment.get("narration")
+            for segment in segments
+            if isinstance(segment, dict)
+        )
+    for reference in references:
+        target = resolve_project_file(project_path, reference)
         if target is None:
             continue
         destination = move_path_to_trash(project_path, target)
@@ -197,6 +205,44 @@ def find_item(plan: dict[str, Any], item_id: str) -> dict[str, Any]:
     if not item:
         raise HTTPException(status_code=404, detail="Timeline item not found")
     return item
+
+
+def ranges_overlap(start_a: float, end_a: float, start_b: float, end_b: float) -> bool:
+    return start_a < end_b and start_b < end_a
+
+
+def probe_duration(path: Path) -> float:
+    try:
+        process = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return max(0.1, float(process.stdout.strip()))
+    except (FileNotFoundError, ValueError, subprocess.CalledProcessError) as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Could not read media duration: {exc}"
+        ) from exc
+
+
+def narration_segments(item: dict[str, Any]) -> list[dict[str, Any]]:
+    value = item.get("narrationSegments")
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(entry, dict) for entry in value):
+        raise HTTPException(status_code=500, detail="Invalid narration segment data")
+    return value
 
 
 @app.get("/")
@@ -296,6 +342,11 @@ async def save_narration(
     project_path = project_dir(project)
     plan = load_plan(project_path)
     item = find_item(plan, item_id)
+    if narration_segments(item):
+        raise HTTPException(
+            status_code=400,
+            detail="Remove range narrations before selecting whole-asset narration",
+        )
 
     extension = extension_for(media.content_type, media.filename)
     if extension not in AUDIO_EXTENSIONS:
@@ -328,6 +379,117 @@ async def save_narration(
     }
 
 
+@app.post("/api/narration-segment")
+async def save_narration_segment(
+    project: str = Form(...),
+    item_id: str = Form(...),
+    start_seconds: float = Form(...),
+    end_seconds: float = Form(...),
+    transcript_hint: str = Form(""),
+    media: UploadFile = File(...),
+) -> dict[str, Any]:
+    project_path = project_dir(project)
+    plan = load_plan(project_path)
+    item = find_item(plan, item_id)
+    if item.get("type") != "video":
+        raise HTTPException(
+            status_code=400, detail="Range narration is only supported for video assets"
+        )
+    if item.get("audioMode") == "narration":
+        raise HTTPException(
+            status_code=400,
+            detail="Switch away from whole-asset narration before adding a range narration",
+        )
+
+    start = round(float(start_seconds), 3)
+    end = round(float(end_seconds), 3)
+    if start < 0 or end <= start:
+        raise HTTPException(status_code=400, detail="Invalid narration range")
+    source = resolve_project_file(project_path, item.get("source"))
+    if source is None or not source.is_file():
+        raise HTTPException(status_code=404, detail="Source video not found")
+    duration = probe_duration(source)
+    if end > duration + 0.05:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Range ends after the source video ({duration:.3f}s)",
+        )
+
+    segments = narration_segments(item)
+    for existing in segments:
+        if ranges_overlap(
+            start,
+            end,
+            float(existing.get("startSeconds", 0.0)),
+            float(existing.get("endSeconds", 0.0)),
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="The selected range overlaps an existing narration range",
+            )
+
+    extension = extension_for(media.content_type, media.filename)
+    if extension not in AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported narration audio format")
+    folder = project_path / "narration" / "segments"
+    segment_id = f"segment-{timestamp()}"
+    target = folder / f"{item_id}-{segment_id}{extension}"
+    size_bytes = await stream_upload_to_disk(media, target)
+
+    segment: dict[str, Any] = {
+        "id": segment_id,
+        "startSeconds": start,
+        "endSeconds": end,
+        "mode": "replace",
+        "subtitleMode": "auto",
+        "narration": str(target.relative_to(project_path)),
+        "narrationSizeBytes": size_bytes,
+    }
+    if transcript_hint.strip():
+        segment["transcriptHint"] = transcript_hint.strip()
+    segments.append(segment)
+    segments.sort(key=lambda value: float(value.get("startSeconds", 0.0)))
+    item["narrationSegments"] = segments
+
+    save_plan(project_path, plan)
+    invalidate_output(project_path)
+    return {"status": "saved", "segment": segment, "item": item, "timeline": plan["timeline"]}
+
+
+@app.delete("/api/narration-segment")
+def delete_narration_segment(
+    project: str = Form(...),
+    item_id: str = Form(...),
+    segment_id: str = Form(...),
+) -> dict[str, Any]:
+    project_path = project_dir(project)
+    plan = load_plan(project_path)
+    item = find_item(plan, item_id)
+    segments = narration_segments(item)
+    index = next(
+        (i for i, segment in enumerate(segments) if segment.get("id") == segment_id),
+        None,
+    )
+    if index is None:
+        raise HTTPException(status_code=404, detail="Narration segment not found")
+    segment = segments.pop(index)
+    target = resolve_project_file(project_path, segment.get("narration"))
+    moved = move_path_to_trash(project_path, target) if target is not None else None
+    if segments:
+        item["narrationSegments"] = segments
+    else:
+        item.pop("narrationSegments", None)
+    save_plan(project_path, plan)
+    invalidate_output(project_path)
+    return {
+        "status": "deleted",
+        "segment": segment,
+        "movedToTrash": moved,
+        "item": item,
+        "timeline": plan["timeline"],
+    }
+
+
 @app.post("/api/audio-mode")
 def set_audio_mode(
     project: str = Form(...),
@@ -346,6 +508,11 @@ def set_audio_mode(
         raise HTTPException(
             status_code=400,
             detail="Narration audio must be uploaded before narration mode can be selected",
+        )
+    if audio_mode == "narration" and narration_segments(item):
+        raise HTTPException(
+            status_code=400,
+            detail="Remove range narrations before selecting whole-asset narration",
         )
 
     item["audioMode"] = audio_mode
