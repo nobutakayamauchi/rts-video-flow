@@ -34,12 +34,12 @@ if [[ ! -x "${VENV_PYTHON}" ]]; then
 fi
 
 echo "[profile] ${VIDEO_WIDTH}x${VIDEO_HEIGHT} @ ${VIDEO_FPS} fps"
-echo "[1/5] Building asset manifest"
+echo "[1/6] Building asset manifest"
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/build_vlog_manifest.py" \
   "${PROJECT_PATH}" \
   --output "${WORK_DIR}/base-manifest.json"
 
-echo "[2/5] Resolving per-asset audio, narration, and subtitles"
+echo "[2/6] Resolving per-asset audio, narration, and subtitles"
 ASSET_AUDIO_ARGS=(
   --project "${PROJECT_PATH}"
   --manifest "${WORK_DIR}/base-manifest.json"
@@ -55,12 +55,19 @@ fi
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/prepare_asset_audio.py" \
   "${ASSET_AUDIO_ARGS[@]}"
 
-echo "[3/5] Exporting SRT"
+echo "[3/6] Baking range narration patches into render sources"
+rm -rf "${OUTPUT_DIR}/render-assets"
+"${VENV_PYTHON}" "${ROOT_DIR}/scripts/materialize_segment_patches.py" \
+  --project "${PROJECT_PATH}" \
+  --manifest "${OUTPUT_DIR}/manifest.json" \
+  --output-dir "${OUTPUT_DIR}/render-assets"
+
+echo "[4/6] Exporting SRT"
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/subtitles_to_srt.py" \
   --input "${OUTPUT_DIR}/subtitles.json" \
   --output "${OUTPUT_DIR}/subtitles.srt"
 
-echo "[4/5] Preparing Remotion"
+echo "[5/6] Preparing Remotion"
 "${VENV_PYTHON}" "${ROOT_DIR}/scripts/prepare_vlog_remotion.py" \
   "${PROJECT_PATH}" \
   --manifest "${OUTPUT_DIR}/manifest.json" \
@@ -70,7 +77,7 @@ echo "[4/5] Preparing Remotion"
   --height "${VIDEO_HEIGHT}" \
   --fps "${VIDEO_FPS}"
 
-echo "[5/5] Writing review gate"
+echo "[6/6] Writing review gate"
 cat > "${OUTPUT_DIR}/NEXT_STEPS.md" <<EOF
 # Next steps for ${PROJECT_NAME}
 
@@ -80,6 +87,7 @@ Generated:
 - subtitles.srt
 - transcript.md
 - per-asset source audio / narration integration
+- range narration patches baked into temporary render-source videos
 - Remotion timeline and assets
 
 Render profile: ${VIDEO_WIDTH}x${VIDEO_HEIGHT} @ ${VIDEO_FPS} fps
@@ -89,6 +97,7 @@ Before rendering:
 - [ ] No notifications, names, email addresses, account IDs, API keys or private URLs are visible
 - [ ] Every video uses the intended audio mode: source, narration, or mute
 - [ ] Narration audio is understandable and matched to the correct asset
+- [ ] Range narration begins and ends at the intended seconds
 - [ ] Audio warnings in manifest.json were reviewed
 - [ ] Subtitle wording and timing are acceptable
 - [ ] Opening, inserted materials and ending are in the intended order
