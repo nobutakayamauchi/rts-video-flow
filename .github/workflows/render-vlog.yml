@@ -45,6 +45,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ contains(inputs.project, 'segment-smoke') && 'feat/narration-segments-v1' || github.ref_name }}
 
       - name: Validate workflow inputs and secrets
         shell: bash
