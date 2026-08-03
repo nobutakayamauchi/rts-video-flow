@@ -13,6 +13,7 @@ VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 AUDIO_MODES = {"source", "narration", "mute"}
 SUBTITLE_MODES = {"auto", "none"}
+SEGMENT_MODES = {"replace"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +51,91 @@ def default_subtitle_mode(item: dict[str, Any], audio_mode: str) -> str:
     return "auto" if audio_mode != "mute" else "none"
 
 
+def ranges_overlap(start_a: float, end_a: float, start_b: float, end_b: float) -> bool:
+    return start_a < end_b and start_b < end_a
+
+
+def normalize_segments(
+    project: Path,
+    raw_segments: object,
+    *,
+    asset_id: str,
+    index: int,
+) -> list[dict[str, Any]]:
+    if raw_segments in (None, []):
+        return []
+    if not isinstance(raw_segments, list):
+        raise ValueError(f"timeline[{index}].narrationSegments must be a list")
+
+    segments: list[dict[str, Any]] = []
+    for segment_index, raw in enumerate(raw_segments):
+        if not isinstance(raw, dict):
+            raise ValueError(
+                f"timeline[{index}].narrationSegments[{segment_index}] must be an object"
+            )
+        narration = raw.get("narration")
+        if not isinstance(narration, str) or not narration.strip():
+            raise ValueError(
+                f"timeline[{index}].narrationSegments[{segment_index}] requires narration"
+            )
+        if not (project / narration).is_file():
+            raise ValueError(
+                f"timeline[{index}].narrationSegments[{segment_index}] narration is missing: {narration}"
+            )
+        try:
+            start = round(float(raw.get("startSeconds")), 3)
+            end = round(float(raw.get("endSeconds")), 3)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"timeline[{index}].narrationSegments[{segment_index}] requires numeric range"
+            ) from None
+        if start < 0 or end <= start:
+            raise ValueError(
+                f"timeline[{index}].narrationSegments[{segment_index}] has invalid range"
+            )
+        mode = str(raw.get("mode", "replace"))
+        if mode not in SEGMENT_MODES:
+            raise ValueError(
+                f"timeline[{index}].narrationSegments[{segment_index}] has invalid mode"
+            )
+        subtitle_mode = str(raw.get("subtitleMode", "auto"))
+        if subtitle_mode not in SUBTITLE_MODES:
+            raise ValueError(
+                f"timeline[{index}].narrationSegments[{segment_index}] has invalid subtitleMode"
+            )
+        segments.append(
+            {
+                **raw,
+                "id": str(
+                    raw.get("id") or f"{asset_id}-segment-{segment_index + 1:03d}"
+                ),
+                "startSeconds": start,
+                "endSeconds": end,
+                "mode": mode,
+                "subtitleMode": subtitle_mode,
+                "narration": narration.strip(),
+            }
+        )
+
+    segments.sort(key=lambda value: (value["startSeconds"], value["endSeconds"]))
+    seen_ids: set[str] = set()
+    previous: dict[str, Any] | None = None
+    for segment in segments:
+        segment_id = str(segment["id"])
+        if segment_id in seen_ids:
+            raise ValueError(f"timeline[{index}] duplicates segment id: {segment_id}")
+        seen_ids.add(segment_id)
+        if previous and ranges_overlap(
+            float(previous["startSeconds"]),
+            float(previous["endSeconds"]),
+            float(segment["startSeconds"]),
+            float(segment["endSeconds"]),
+        ):
+            raise ValueError(f"timeline[{index}] has overlapping narration segments")
+        previous = segment
+    return segments
+
+
 def normalize_item(project: Path, raw: dict[str, Any], index: int) -> dict[str, Any]:
     item = dict(raw)
     source = item.get("source")
@@ -72,6 +158,23 @@ def normalize_item(project: Path, raw: dict[str, Any], index: int) -> dict[str, 
         audio_mode = "mute"
     item["audioMode"] = audio_mode
     item["subtitleMode"] = default_subtitle_mode(item, audio_mode)
+
+    segments = normalize_segments(
+        project,
+        item.get("narrationSegments"),
+        asset_id=str(item["id"]),
+        index=index,
+    )
+    if asset_type == "image" and segments:
+        raise ValueError(f"timeline[{index}] range narration only supports video")
+    if audio_mode == "narration" and segments:
+        raise ValueError(
+            f"timeline[{index}] cannot combine whole narration with range narration"
+        )
+    if segments:
+        item["narrationSegments"] = segments
+    else:
+        item.pop("narrationSegments", None)
 
     if asset_type == "image":
         item["durationSeconds"] = max(0.5, float(item.get("durationSeconds", 5.0)))
@@ -150,7 +253,7 @@ def main() -> None:
         source_mode = "folder-default"
 
     payload = {
-        "version": 2,
+        "version": 3,
         "project": project.name,
         "sourceMode": source_mode,
         "policy": policy,
