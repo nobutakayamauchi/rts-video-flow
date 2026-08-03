@@ -66,6 +66,16 @@ def safe(index: int, path: Path) -> str:
     return f"{index:03d}-{path.stem[:48]}{path.suffix.lower() or '.bin'}"
 
 
+def copy_narration(project: Path, public: Path, value: str, name: str) -> str:
+    narration_path = project / value
+    if not narration_path.is_file():
+        fail(f"Missing narration: {narration_path}")
+    suffix = narration_path.suffix.lower() or ".webm"
+    output_name = f"{name}{suffix}"
+    shutil.copy2(narration_path, public / output_name)
+    return output_name
+
+
 def build(project: Path, manifest: dict[str, Any], public: Path) -> tuple[list[dict[str, Any]], float]:
     raw = manifest.get("timeline")
     if not isinstance(raw, list) or not raw:
@@ -89,24 +99,23 @@ def build(project: Path, manifest: dict[str, Any], public: Path) -> tuple[list[d
 
         name = safe(index, source)
         shutil.copy2(source, public / name)
-        duration = float(
-            item.get(
-                "resolvedDuration",
-                item.get(
-                    "durationSeconds",
-                    probe(source) if asset_type == "video" else 5.0,
-                ),
-            )
-        )
+        resolved_duration = item.get("resolvedDuration")
+        if resolved_duration is not None:
+            duration = float(resolved_duration)
+        elif item.get("durationSeconds") is not None:
+            duration = float(item["durationSeconds"])
+        else:
+            duration = probe(source) if asset_type == "video" else 5.0
 
         narration_name: str | None = None
         narration_value = item.get("narration")
         if isinstance(narration_value, str) and narration_value:
-            narration_path = project / narration_value
-            if not narration_path.is_file():
-                fail(f"Missing narration: {narration_path}")
-            narration_name = f"narration-{index:03d}{narration_path.suffix.lower() or '.webm'}"
-            shutil.copy2(narration_path, public / narration_name)
+            narration_name = copy_narration(
+                project,
+                public,
+                narration_value,
+                f"narration-{index:03d}",
+            )
 
         audio_mode = str(
             item.get(
@@ -121,6 +130,40 @@ def build(project: Path, manifest: dict[str, Any], public: Path) -> tuple[list[d
         if audio_mode == "narration" and narration_name is None:
             fail(f"Narration mode is missing narration audio for timeline item {index}")
 
+        raw_segments = item.get("narrationSegments", [])
+        if not isinstance(raw_segments, list):
+            fail(f"Invalid narrationSegments for timeline item {index}")
+        segments: list[dict[str, Any]] = []
+        for segment_index, raw_segment in enumerate(raw_segments):
+            if not isinstance(raw_segment, dict):
+                fail(f"Invalid narration segment {segment_index} for timeline item {index}")
+            narration = raw_segment.get("narration")
+            if not isinstance(narration, str) or not narration:
+                fail(f"Missing narration path for segment {segment_index}")
+            start = float(raw_segment.get("startSeconds", 0.0))
+            end = float(raw_segment.get("endSeconds", 0.0))
+            if start < 0 or end <= start or end > duration + 0.05:
+                fail(f"Invalid narration segment range for timeline item {index}")
+            segment_name = copy_narration(
+                project,
+                public,
+                narration,
+                f"segment-{index:03d}-{segment_index:03d}",
+            )
+            segments.append(
+                {
+                    "id": str(
+                        raw_segment.get("id")
+                        or f"{item.get('id', index)}-segment-{segment_index + 1:03d}"
+                    ),
+                    "start": round(start, 3),
+                    "end": round(end, 3),
+                    "duration": round(end - start, 3),
+                    "narration": segment_name,
+                    "mode": str(raw_segment.get("mode", "replace")),
+                }
+            )
+
         output.append(
             {
                 "id": str(item.get("id") or index),
@@ -132,6 +175,7 @@ def build(project: Path, manifest: dict[str, Any], public: Path) -> tuple[list[d
                 "motion": str(item.get("motion", "none")),
                 "narration": narration_name,
                 "audioMode": audio_mode,
+                "narrationSegments": segments,
                 "explanation": str(item.get("explanation", "")).strip(),
             }
         )
@@ -166,7 +210,8 @@ import {{AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, interpolate, static
 import timeline from "../public/vlog/timeline.json";
 import subtitles from "../public/vlog/subtitles.json";
 
-type T = {{id:string;type:"video"|"image";role:string;src:string;start:number;duration:number;motion:string;narration:string|null;audioMode:"source"|"narration"|"mute";explanation:string}};
+type N = {{id:string;start:number;end:number;duration:number;narration:string;mode:"replace"}};
+type T = {{id:string;type:"video"|"image";role:string;src:string;start:number;duration:number;motion:string;narration:string|null;audioMode:"source"|"narration"|"mute";narrationSegments:N[];explanation:string}};
 type S = {{id:number;start:number;end:number;lines:string[];fontSize:number}};
 
 const FPS = {fps};
@@ -194,6 +239,15 @@ const Still: React.FC<{{item:T}}> = ({{item}}) => {{
   );
 }};
 
+const sourceVolume = (item:T, localFrame:number):number => {{
+  if (item.audioMode !== "source") return 0;
+  const second = localFrame / FPS;
+  const replaced = item.narrationSegments.some((segment) =>
+    second >= segment.start && second < segment.end
+  );
+  return replaced ? 0 : 1;
+}};
+
 export const VlogVideo: React.FC = () => {{
   const frame = useCurrentFrame();
   return (
@@ -206,7 +260,8 @@ export const VlogVideo: React.FC = () => {{
             {{item.type === "video" ? (
               <OffthreadVideo
                 src={{staticFile(`vlog/assets/${{item.src}}`)}}
-                muted={{item.audioMode !== "source"}}
+                muted={{item.audioMode === "narration" || item.audioMode === "mute"}}
+                volume={{(localFrame) => sourceVolume(item, localFrame)}}
                 style={{{{width:"100%",height:"100%",objectFit:"contain"}}}}
               />
             ) : (
@@ -215,6 +270,15 @@ export const VlogVideo: React.FC = () => {{
             {{item.audioMode === "narration" && item.narration && (
               <Audio src={{staticFile(`vlog/assets/${{item.narration}}`)}} />
             )}}
+            {{item.narrationSegments.map((segment) => (
+              <Sequence
+                key={{segment.id}}
+                from={{Math.round(segment.start * FPS)}}
+                durationInFrames={{Math.max(1, Math.round(segment.duration * FPS))}}
+              >
+                <Audio src={{staticFile(`vlog/assets/${{segment.narration}}`)}} />
+              </Sequence>
+            ))}}
           </Sequence>
         );
       }})}}
