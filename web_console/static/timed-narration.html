@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>後入れ音声・尺合わせ</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e;--warn:#ffd479}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:720px;margin:auto;padding:18px 14px 90px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}h1{font-size:1.55rem}.lead,.hint,.meta{color:var(--muted);line-height:1.65}video,img,audio{width:100%;border-radius:13px}video,img{max-height:52vh;object-fit:contain;background:#000}label{display:block;font-weight:800;margin:10px 0 6px}input,textarea,button,a.button{width:100%;font:inherit;border-radius:12px;padding:13px}input,textarea{background:#0d131b;color:#fff;border:1px solid #3a4b60}textarea{min-height:80px}button,a.button{display:block;border:0;background:var(--gold);color:#17120a;font-weight:900;text-align:center;text-decoration:none;margin-top:9px}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.ghost{background:transparent!important;color:#fff!important;border:1px solid var(--line)!important}button:disabled{opacity:.45}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.clock{text-align:center;font-size:2.25rem;font-variant-numeric:tabular-nums;font-weight:900;padding:16px;border:1px solid var(--line);border-radius:14px;background:#0d131b}.clock.over{color:var(--red);border-color:var(--red)}.clock.ready{color:var(--green)}.status{white-space:pre-wrap;line-height:1.6}.ok{color:var(--green)}.warning{color:var(--warn)}.hidden{display:none!important}.choice{padding:12px;border:1px solid var(--line);border-radius:12px;margin:9px 0}.choice button{margin-top:8px}.recording{animation:pulse 1s infinite}@keyframes pulse{50%{opacity:.55}}
+@media(max-width:430px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main class="wrap">
+<h1>後入れ音声</h1>
+<p class="lead">映像・画像の尺を見ながら録音します。0秒を過ぎても録音は止まらず、あとで超過・不足を確認できます。</p>
+<p><a id="back" style="color:#ffc84a">構成へ戻る</a></p>
+
+<section class="panel">
+<div id="visual"></div>
+<h2 id="title">素材を読み込み中…</h2>
+<p id="source" class="meta"></p>
+<div id="imageDurationBox" class="hidden">
+<label for="imageDuration">画像の表示時間（秒）</label>
+<input id="imageDuration" type="number" min="0.5" max="3600" step="0.1" value="5.0">
+<p class="hint">録音後も、録音時間に合わせて変更できます。</p>
+</div>
+<p id="muteNote" class="warning">後入れ音声を保存すると、元動画の音声は全区間カットされます。</p>
+</section>
+
+<section class="panel">
+<h2>録音</h2>
+<p id="targetText" class="meta">対象時間を確認中…</p>
+<div id="clock" class="clock">00:00.0</div>
+<div class="row">
+<button id="start" class="danger">● 録音開始</button>
+<button id="stop" class="secondary" disabled>■ 録音停止</button>
+</div>
+<label for="audioFile">または音声ファイルを選択</label>
+<input id="audioFile" type="file" accept="audio/*,video/mp4,video/webm">
+<p id="recordStatus" class="status">録音前です。</p>
+<audio id="audioPreview" controls class="hidden"></audio>
+<div class="row">
+<button id="playTogether" class="secondary" disabled>映像と合わせて確認</button>
+<button id="discard" class="ghost" disabled>録り直す・破棄</button>
+</div>
+</section>
+
+<section id="differencePanel" class="panel hidden">
+<h2>尺の確認</h2>
+<p id="difference" class="status"></p>
+<div id="imageChoices" class="hidden">
+<button id="fitImage" class="secondary">画像時間を録音時間に合わせる</button>
+<button id="keepImage" class="ghost">設定した画像時間のまま使う</button>
+</div>
+<p id="fitExplanation" class="hint"></p>
+</section>
+
+<section class="panel">
+<h2>保存</h2>
+<label for="hint">字幕・文字起こしの補助文（任意）</label>
+<textarea id="hint" placeholder="話した内容のメモ"></textarea>
+<button id="save" disabled>後入れ音声を保存</button>
+<a id="skip" class="button ghost">今回は後入れしない</a>
+<p id="saveStatus" class="status">待機中</p>
+</section>
+</main>
+<script>
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('../',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
+const params=new URLSearchParams(location.search);
+const project=params.get('project')||'';
+const itemId=params.get('item')||'';
+const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'画像',camera:'通常動画'};
+let info=null;
+let recorder=null;
+let stream=null;
+let chunks=[];
+let selectedFile=null;
+let selectedUrl='';
+let selectedDuration=0;
+let startedAt=0;
+let timer=null;
+let visualElement=null;
+
+function format(seconds){const value=Math.max(0,Number(seconds)||0);const mins=Math.floor(value/60);const secs=value-mins*60;return `${String(mins).padStart(2,'0')}:${secs.toFixed(1).padStart(4,'0')}`}
+function currentTarget(){if(info?.type==='image')return Math.max(.5,Number($('#imageDuration').value)||5);return Number(info?.targetDurationSeconds||0)}
+async function requestJson(path,options={}){let response;try{response=await fetch(apiUrl(path),options)}catch(error){throw new Error('通信失敗: '+error.message)}const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text||`HTTP ${response.status}`}}if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);return data}
+function preferredMime(){return ['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'].find(type=>window.MediaRecorder&&MediaRecorder.isTypeSupported?.(type))||''}
+function extension(type){if(type.includes('mp4'))return 'm4a';if(type.includes('ogg'))return 'ogg';return 'webm'}
+function stopTracks(){if(stream){stream.getTracks().forEach(track=>track.stop());stream=null}}
+function updateClock(){const elapsed=(performance.now()-startedAt)/1000;const remaining=currentTarget()-elapsed;const clock=$('#clock');if(remaining>=0){clock.classList.remove('over');clock.textContent=`残り ${format(remaining)}`}else{clock.classList.add('over');clock.textContent=`超過 ${format(-remaining)}`}}
+function durationOf(file){return new Promise(resolve=>{const audio=document.createElement('audio');const url=URL.createObjectURL(file);audio.preload='metadata';audio.onloadedmetadata=()=>{const value=Number(audio.duration);URL.revokeObjectURL(url);resolve(Number.isFinite(value)?value:0)};audio.onerror=()=>{URL.revokeObjectURL(url);resolve(0)};audio.src=url})}
+function setPreview(file,duration){if(selectedUrl)URL.revokeObjectURL(selectedUrl);selectedFile=file;selectedDuration=duration;selectedUrl=URL.createObjectURL(file);$('#audioPreview').src=selectedUrl;$('#audioPreview').classList.remove('hidden');$('#save').disabled=false;$('#discard').disabled=false;$('#playTogether').disabled=false;showDifference()}
+function showDifference(){if(!selectedFile)return;const target=currentTarget();const delta=selectedDuration-target;$('#differencePanel').classList.remove('hidden');let text=`設定時間：${target.toFixed(1)}秒\n録音時間：${selectedDuration.toFixed(1)}秒\n`;if(delta>0.05){text+=`超過：${delta.toFixed(1)}秒`}else if(delta<-.05){text+=`不足：${(-delta).toFixed(1)}秒`}else{text+='ほぼ一致しています'}$('#difference').textContent=text;if(info.type==='image'){$('#imageChoices').classList.remove('hidden');$('#fitExplanation').textContent=delta>0.05?'設定時間のままなら超過部分を末尾でカットします。':delta<-.05?'設定時間のままなら不足部分を無音にします。':'そのまま保存できます。'}else{$('#imageChoices').classList.add('hidden');$('#fitExplanation').textContent=delta>0.05?'動画尺を超えた音声は末尾でカットされます。':delta<-.05?'録音終了後の残り時間は無音になります。':'動画尺とほぼ一致しています。'}}
+async function load(){
+  $('#back').href=`../?project=${encodeURIComponent(project)}`;
+  $('#skip').href=`../?project=${encodeURIComponent(project)}`;
+  if(!project||!itemId){$('#saveStatus').textContent='project または item がありません。';return}
+  try{
+    info=await requestJson(`api/timed-narration/${encodeURIComponent(project)}/${encodeURIComponent(itemId)}`,{cache:'no-store'});
+    $('#title').textContent=labels[info.role]||info.role||'素材';$('#source').textContent=info.source||'';
+    $('#targetText').textContent=`対象時間：${Number(info.targetDurationSeconds).toFixed(1)}秒`;
+    $('#clock').textContent=`残り ${format(info.targetDurationSeconds)}`;$('#clock').classList.add('ready');
+    const source=apiUrl(`api/source/${encodeURIComponent(project)}/${encodeURIComponent(itemId)}`);
+    if(info.type==='image'){$('#visual').innerHTML=`<img src="${source}" alt="画像素材">`;$('#imageDurationBox').classList.remove('hidden');$('#imageDuration').value=Number(info.targetDurationSeconds).toFixed(1);$('#muteNote').textContent='画像には元音声がないため、後入れ音声だけを使用します。';visualElement=$('#visual img')}else{$('#visual').innerHTML=`<video src="${source}" controls playsinline></video>`;visualElement=$('#visual video')}
+    if(info.narrationUrl){$('#recordStatus').textContent='保存済みの後入れ音声があります。録り直すと置き換わります。'}
+  }catch(error){$('#saveStatus').textContent='読み込み失敗: '+error.message}
+}
+$('#imageDuration').oninput=()=>{if(info){$('#targetText').textContent=`対象時間：${currentTarget().toFixed(1)}秒`;if(!recorder)$('#clock').textContent=`残り ${format(currentTarget())}`;showDifference()}};
+$('#start').onclick=async()=>{if(recorder){return}try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});const mime=preferredMime();chunks=[];recorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);recorder.ondataavailable=event=>{if(event.data?.size)chunks.push(event.data)};recorder.onstop=async()=>{clearInterval(timer);stopTracks();const type=recorder.mimeType||mime||'audio/webm';const blob=new Blob(chunks,{type});const file=new File([blob],`narration-${Date.now()}.${extension(type)}`,{type});const duration=await durationOf(file);setPreview(file,duration||((performance.now()-startedAt)/1000));$('#recordStatus').textContent='録音完了。単体再生と映像合わせを確認できます。';recorder=null;$('#start').disabled=false;$('#start').classList.remove('recording');$('#stop').disabled=true};recorder.start(250);startedAt=performance.now();timer=setInterval(updateClock,100);$('#start').disabled=true;$('#start').classList.add('recording');$('#stop').disabled=false;$('#recordStatus').textContent='録音中です。0秒を過ぎても自動停止しません。'}catch(error){$('#recordStatus').textContent='マイク開始失敗: '+error.message}};
+$('#stop').onclick=()=>{if(recorder&&recorder.state!=='inactive')recorder.stop()};
+$('#audioFile').onchange=async()=>{const file=$('#audioFile').files?.[0];if(!file)return;const duration=await durationOf(file);setPreview(file,duration);$('#recordStatus').textContent=`選択済み：${file.name}`};
+$('#discard').onclick=()=>{selectedFile=null;selectedDuration=0;if(selectedUrl)URL.revokeObjectURL(selectedUrl);selectedUrl='';$('#audioPreview').removeAttribute('src');$('#audioPreview').classList.add('hidden');$('#differencePanel').classList.add('hidden');$('#save').disabled=true;$('#discard').disabled=true;$('#playTogether').disabled=true;$('#audioFile').value='';$('#clock').classList.remove('over');$('#clock').textContent=`残り ${format(currentTarget())}`;$('#recordStatus').textContent='破棄しました。もう一度録音できます。'};
+$('#fitImage').onclick=()=>{$('#imageDuration').value=Math.max(.5,selectedDuration).toFixed(1);$('#targetText').textContent=`対象時間：${currentTarget().toFixed(1)}秒`;showDifference()};
+$('#keepImage').onclick=()=>showDifference();
+$('#playTogether').onclick=async()=>{if(!selectedUrl)return;const audio=$('#audioPreview');audio.pause();audio.currentTime=0;if(info.type==='video'&&visualElement){visualElement.pause();visualElement.currentTime=0;visualElement.muted=true;try{await Promise.all([visualElement.play(),audio.play()])}catch(error){$('#recordStatus').textContent='同時再生できませんでした。再生ボタンをもう一度押してください。'}}else{try{await audio.play()}catch(error){$('#recordStatus').textContent='音声を再生できませんでした。'}}};
+$('#save').onclick=async()=>{if(!selectedFile)return;const body=new FormData();body.append('project',project);body.append('item_id',itemId);body.append('target_duration_seconds',String(currentTarget()));body.append('transcript_hint',$('#hint').value);body.append('media',selectedFile,selectedFile.name);$('#save').disabled=true;$('#saveStatus').textContent='音声を保存し、指定尺へ整形しています…';try{const data=await requestJson('api/timed-narration',{method:'POST',body});const fit={"trim-tail":'超過分を末尾でカット',"pad-silence":'不足分を無音で補完',exact:'尺が一致'}[data.fit]||data.fit;$('#saveStatus').textContent=`保存しました。\n元音声：全区間カット\n処理：${fit}\n使用尺：${Number(data.targetDurationSeconds).toFixed(1)}秒`;$('#back').textContent='構成へ戻る'}catch(error){$('#saveStatus').textContent='保存失敗: '+error.message;$('#save').disabled=false}};
+window.addEventListener('beforeunload',()=>{stopTracks();if(selectedUrl)URL.revokeObjectURL(selectedUrl)});
+load();
+</script>
+</body>
+</html>
