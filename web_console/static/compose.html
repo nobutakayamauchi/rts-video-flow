@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>限界開発 Vlog 構成</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--panel2:#101720;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e;--warn:#ffd479}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px 14px 160px}h1{font-size:1.65rem;margin:.4em 0}.lead,.hint,.meta{color:var(--muted);line-height:1.6}.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;position:sticky;top:0;z-index:4;background:rgba(11,15,20,.96);padding:10px 0}.step{padding:9px 5px;border:1px solid var(--line);border-radius:999px;text-align:center;font-size:.78rem;color:var(--muted);text-decoration:none}.step.active{background:var(--gold);color:#17120a;border-color:var(--gold);font-weight:900}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;margin:14px 0}.section-title{display:flex;justify-content:space-between;align-items:center;gap:8px}.section-title h2{font-size:1.22rem;margin:.25em 0}.count{font-size:.8rem;color:var(--muted)}label{display:block;font-weight:800;margin:9px 0 6px}input,button,a.button{width:100%;font:inherit;border-radius:12px;padding:13px}input{background:#0d131b;color:#fff;border:1px solid #3a4b60}button,a.button{border:0;background:var(--gold);color:#17120a;font-weight:900;margin-top:9px;text-align:center;text-decoration:none;display:block}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.ghost{background:transparent!important;color:var(--ink)!important;border:1px solid var(--line)!important}.ok{color:var(--green)}.warning{color:var(--warn)}.status{white-space:pre-wrap;line-height:1.55;color:#d6dee7}.card{border:1px solid var(--line);background:var(--panel2);border-radius:14px;padding:13px;margin:10px 0}.card h3{margin:.1em 0 .35em;font-size:1.05rem;color:var(--gold)}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:.75rem;margin:3px 4px 3px 0}.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.actions button,.actions a{margin-top:7px}.empty{border:1px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted)}.global{position:fixed;left:0;right:0;bottom:0;background:rgba(11,15,20,.97);border-top:1px solid var(--line);padding:9px 12px calc(9px + env(safe-area-inset-bottom));z-index:8}.global-inner{max-width:760px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:7px}.global button,.global a{margin:0;padding:11px;font-size:.88rem}.snackbar{position:fixed;left:14px;right:14px;bottom:125px;z-index:12;max-width:720px;margin:auto;background:#202b38;border:1px solid #4a6078;border-radius:14px;padding:13px;display:none}.snackbar.show{display:block}.snackbar button{margin-top:8px}.toplinks{display:flex;gap:12px;flex-wrap:wrap}.toplinks a{color:var(--gold)}@media(max-width:430px){.actions{grid-template-columns:1fr}.global-inner{grid-template-columns:1fr 1fr}.step{font-size:.7rem;padding:8px 3px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<div class="steps">
+<a class="step active" href="#composition">1. 構成</a>
+<a class="step" id="audioStep">2. 音声</a>
+<a class="step" href="#subtitle">3. 字幕</a>
+<a class="step" id="outputStep">4. 書き出し</a>
+</div>
+<h1>Vlog構成</h1>
+<p class="lead">オープニング・本編・エンディングを分けて確認し、保存した音声をそのまま書き出せます。</p>
+<div class="toplinks">
+<a id="wizardLink">素材を追加</a>
+<a id="manageLink">音声をまとめて編集</a>
+<a id="trashLink">ゴミ箱</a>
+</div>
+
+<section class="panel" id="composition">
+<label for="project">プロジェクト名</label>
+<input id="project" value="01-segment-smoke-v3" autocomplete="off">
+<button id="load">構成を読み込む</button>
+<p id="status" class="status">待機中</p>
+<div id="freshness"></div>
+</section>
+
+<section class="panel">
+<div class="section-title"><h2>オープニング</h2><span class="count">1件</span></div>
+<div id="opening" class="empty">読み込み待ち</div>
+</section>
+
+<section class="panel">
+<div class="section-title"><h2>本編</h2><span id="bodyCount" class="count">0件</span></div>
+<div id="body" class="empty">読み込み待ち</div>
+</section>
+
+<section class="panel">
+<div class="section-title"><h2>エンディング</h2><span class="count">1件</span></div>
+<div id="ending" class="empty">読み込み待ち</div>
+</section>
+
+<section class="panel" id="subtitle">
+<h2>字幕</h2>
+<p class="hint">現在は素材ごとの字幕モードを表示します。字幕文面の詳細編集は次の実装スライスです。</p>
+<div id="subtitleSummary" class="empty">読み込み待ち</div>
+</section>
+</main>
+
+<div class="global">
+<div class="global-inner">
+<button id="apply" class="ghost">変更を反映</button>
+<button id="preview">プレビュー書き出し</button>
+<button id="final" class="secondary">最終版を書き出す</button>
+<a id="openFinal" class="button secondary" target="_blank">完成動画を開く</a>
+</div>
+</div>
+
+<div id="snackbar" class="snackbar">
+<div id="snackbarText"></div>
+<button id="undo" class="secondary">元に戻す</button>
+</div>
+
+<script>
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('./',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
+const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'スクリーンショット',camera:'通常動画'};
+const audioLabels={source:'元音声',narration:'後付け音声',mute:'無音'};
+let timeline=[];
+let outputInfo=null;
+let undoTimer=null;
+let currentTrashId='';
+
+function projectName(){return $('#project').value.trim()}
+function escapeHtml(value){return String(value??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}
+function formatBytes(bytes){const value=Number(bytes||0);if(value<1024)return `${value} B`;if(value<1024**2)return `${(value/1024).toFixed(1)} KB`;if(value<1024**3)return `${(value/1024**2).toFixed(1)} MB`;return `${(value/1024**3).toFixed(2)} GB`}
+function setStatus(message){$('#status').textContent=message}
+async function requestJson(path,options={}){
+  let response;
+  try{response=await fetch(apiUrl(path),options)}catch(error){throw new Error('通信失敗: '+error.message)}
+  const text=await response.text();let data={};
+  try{data=text?JSON.parse(text):{}}catch{data={detail:text.slice(0,1000)||`HTTP ${response.status}`}}
+  if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);
+  return data;
+}
+function updateLinks(){
+  const name=encodeURIComponent(projectName());
+  $('#wizardLink').href='static/index.html';
+  $('#manageLink').href=`static/manage.html?project=${name}`;
+  $('#trashLink').href=`static/trash.html?project=${name}`;
+  $('#audioStep').href=`static/manage.html?project=${name}`;
+  $('#outputStep').href=`static/output.html?project=${name}`;
+  $('#openFinal').href=apiUrl(`api/download/${name}`);
+}
+function badge(text){return `<span class="badge">${escapeHtml(text)}</span>`}
+function itemCard(item,index){
+  const segments=Array.isArray(item.narrationSegments)?item.narrationSegments.length:0;
+  const subtitle=item.subtitleMode||((item.audioMode||'source')==='mute'?'none':'auto');
+  const name=encodeURIComponent(projectName());
+  const id=encodeURIComponent(item.id);
+  return `<article class="card" data-id="${escapeHtml(item.id)}">
+    <h3>${index+1}. ${escapeHtml(labels[item.role]||item.role||'素材')}</h3>
+    <p class="meta">${escapeHtml(item.source||'')}</p>
+    ${item.explanation?`<p>${escapeHtml(item.explanation)}</p>`:''}
+    <div>
+      ${badge(audioLabels[item.audioMode]||item.audioMode||'音声未設定')}
+      ${badge(`範囲音声 ${segments}件`)}
+      ${badge(`字幕 ${subtitle}`)}
+    </div>
+    <div class="actions">
+      <a class="button secondary" href="static/material.html?project=${name}&item=${id}">編集する</a>
+      <a class="button ghost" href="static/manage.html?project=${name}&item=${id}">音声詳細</a>
+      <button class="ghost move-up" data-id="${escapeHtml(item.id)}">上へ</button>
+      <button class="ghost move-down" data-id="${escapeHtml(item.id)}">下へ</button>
+      <button class="danger delete-item" data-id="${escapeHtml(item.id)}">構成から削除</button>
+    </div>
+  </article>`;
+}
+function renderGroup(target,items,offset=0){
+  const box=$(target);
+  if(!items.length){box.className='empty';box.innerHTML='未登録です。';return}
+  box.className='';
+  box.innerHTML=items.map((item,index)=>itemCard(item,offset+index)).join('');
+}
+function render(){
+  const opening=timeline.filter(item=>item.role==='opening');
+  const ending=timeline.filter(item=>item.role==='ending');
+  const body=timeline.filter(item=>item.role!=='opening'&&item.role!=='ending');
+  renderGroup('#opening',opening,0);
+  renderGroup('#body',body,opening.length);
+  renderGroup('#ending',ending,opening.length+body.length);
+  $('#bodyCount').textContent=`${body.length}件`;
+  const auto=timeline.filter(item=>(item.subtitleMode||'auto')==='auto').length;
+  const none=timeline.length-auto;
+  $('#subtitleSummary').className='';
+  $('#subtitleSummary').innerHTML=`${badge(`自動字幕 ${auto}件`)} ${badge(`字幕なし ${none}件`)}`;
+  document.querySelectorAll('.delete-item').forEach(button=>button.onclick=()=>deleteItem(button.dataset.id));
+  document.querySelectorAll('.move-up').forEach(button=>button.onclick=()=>moveItem(button.dataset.id,-1));
+  document.querySelectorAll('.move-down').forEach(button=>button.onclick=()=>moveItem(button.dataset.id,1));
+}
+function renderFreshness(){
+  const box=$('#freshness');
+  if(!outputInfo){box.innerHTML='';return}
+  const finalState=outputInfo.final?.state||'MISSING';
+  const className=finalState==='CURRENT'?'ok':'warning';
+  box.innerHTML=`<p class="${className}">完成動画：${escapeHtml(finalState)}</p>
+    <p class="meta">生成物 ${outputInfo.artifactCount||0}件 / ${formatBytes(outputInfo.totalSizeBytes||0)}</p>`;
+}
+async function load(){
+  const name=projectName();
+  if(!name){setStatus('プロジェクト名を入力してください。');return}
+  updateLinks();setStatus('構成を読み込み中…');
+  try{
+    const [project,output]=await Promise.all([
+      requestJson(`api/project/${encodeURIComponent(name)}`,{cache:'no-store'}),
+      requestJson(`api/output/${encodeURIComponent(name)}`,{cache:'no-store'})
+    ]);
+    timeline=project.timeline||[];outputInfo=output;render();renderFreshness();
+    setStatus(`${timeline.length}件の素材を読み込みました。`);
+  }catch(error){setStatus('読み込み失敗: '+error.message)}
+}
+async function moveItem(itemId,direction){
+  const index=timeline.findIndex(item=>item.id===itemId);
+  const next=index+direction;
+  if(index<0||next<0||next>=timeline.length)return;
+  [timeline[index],timeline[next]]=[timeline[next],timeline[index]];
+  const body=new FormData();body.append('project',projectName());body.append('ordered_ids',timeline.map(item=>item.id).join(','));
+  setStatus('順番を保存中…');
+  try{const data=await requestJson('api/reorder',{method:'POST',body});timeline=data.timeline||timeline;render();setStatus('順番を保存しました。')}catch(error){setStatus('順番保存失敗: '+error.message);await load()}
+}
+function showUndo(record,message){
+  currentTrashId=record?.trashId||'';
+  if(!currentTrashId)return;
+  $('#snackbarText').textContent=message;
+  $('#snackbar').classList.add('show');
+  clearTimeout(undoTimer);
+  undoTimer=setTimeout(()=>{$('#snackbar').classList.remove('show');currentTrashId=''},60000);
+}
+async function deleteItem(itemId){
+  const item=timeline.find(value=>value.id===itemId);
+  if(!item)return;
+  const title=labels[item.role]||item.role||'素材';
+  if(!confirm(`${title}を構成から削除します。\n\n素材ファイルと付属音声はゴミ箱へ移動します。書き出し結果は要再書き出しになります。`))return;
+  const body=new FormData();body.append('project',projectName());body.append('item_id',itemId);
+  setStatus('素材をゴミ箱へ移動中…');
+  try{
+    const data=await requestJson('api/material',{method:'DELETE',body});
+    timeline=data.timeline||[];render();setStatus('構成から削除しました。60秒以内なら元に戻せます。');
+    showUndo(data.trash,`${title}をゴミ箱へ移動しました`);
+  }catch(error){setStatus('削除失敗: '+error.message)}
+}
+async function undo(){
+  if(!currentTrashId)return;
+  const body=new FormData();body.append('project',projectName());body.append('trash_id',currentTrashId);body.append('conflict_policy','rename');
+  try{
+    await requestJson('api/trash/restore',{method:'POST',body});
+    $('#snackbar').classList.remove('show');currentTrashId='';await load();setStatus('削除した内容を元に戻しました。完成動画は要再書き出しです。');
+  }catch(error){setStatus('復元失敗: '+error.message)}
+}
+async function renderOutput(mode){
+  const label=mode==='preview'?'プレビュー':'最終版';
+  if(!confirm(`${label}を書き出します。自動公開は行いません。`))return;
+  const body=new FormData();body.append('project',projectName());body.append('mode',mode);
+  setStatus(`${label}を書き出しています。画面を閉じずにお待ちください…`);
+  $('#preview').disabled=true;$('#final').disabled=true;
+  try{
+    const data=await requestJson('api/output/render',{method:'POST',body});
+    setStatus(`${label}の書き出しが完了しました。\n${data.output||''}`);
+    await load();
+  }catch(error){setStatus(`${label}書き出し失敗:\n`+error.message)}
+  finally{$('#preview').disabled=false;$('#final').disabled=false}
+}
+$('#load').onclick=load;
+$('#apply').onclick=load;
+$('#preview').onclick=()=>renderOutput('preview');
+$('#final').onclick=()=>renderOutput('final');
+$('#undo').onclick=undo;
+$('#project').oninput=updateLinks;
+const params=new URLSearchParams(location.search);if(params.get('project'))$('#project').value=params.get('project');
+updateLinks();load();
+</script>
+</body>
+</html>
