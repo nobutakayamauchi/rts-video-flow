@@ -13,8 +13,12 @@ fi
 
 for required in \
   "${PROD}/venv/bin/python3" \
+  "${FEATURE}/web_console/app_v3.py" \
   "${FEATURE}/web_console/app_v2.py" \
-  "${FEATURE}/web_console/app.py"; do
+  "${FEATURE}/web_console/app.py" \
+  "${FEATURE}/web_console/static/compose.html" \
+  "${FEATURE}/web_console/static/output.html" \
+  "${FEATURE}/web_console/static/trash.html"; do
   if [[ ! -e "${required}" ]]; then
     echo "Missing required path: ${required}" >&2
     exit 3
@@ -36,7 +40,7 @@ done
 
 cat >"${UNIT_PATH}" <<'EOF'
 [Unit]
-Description=RTS Video Flow Web Console
+Description=RTS Video Flow Composition Console
 After=network-online.target
 Wants=network-online.target
 
@@ -46,7 +50,7 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/rts-video-flow-segment-test
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/ubuntu/rts-video-flow/venv/bin/python3 -m uvicorn web_console.app_v2:app --host 127.0.0.1 --port 8000
+ExecStart=/home/ubuntu/rts-video-flow/venv/bin/python3 -m uvicorn web_console.app_v3:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
@@ -56,7 +60,7 @@ WantedBy=multi-user.target
 EOF
 
 mapfile -t old_pids < <(
-  pgrep -f '^/home/ubuntu/rts-video-flow/venv/bin/python3 -m uvicorn web_console\.app_v2:app .*--port 8000' || true
+  pgrep -f '^/home/ubuntu/rts-video-flow/venv/bin/python3 -m uvicorn web_console\.app_v[23]:app .*--port 8000' || true
 )
 
 systemctl daemon-reload
