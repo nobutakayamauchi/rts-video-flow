@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>限界開発 Vlog ゴミ箱</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--panel2:#101720;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:22px 15px 100px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}h1{font-size:1.6rem}.lead,.hint,.meta{color:var(--muted);line-height:1.6}label{display:block;font-weight:800;margin:9px 0 6px}input,button,a.button{width:100%;font:inherit;border-radius:12px;padding:14px}input{background:#0d131b;color:#fff;border:1px solid #3a4b60}button,a.button{display:block;border:0;background:var(--gold);color:#17120a;font-weight:900;text-align:center;text-decoration:none;margin-top:9px}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.ghost{background:transparent!important;color:var(--ink)!important;border:1px solid var(--line)!important}.record{background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:13px;margin:10px 0}.record strong{color:var(--gold)}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.status{white-space:pre-wrap;line-height:1.55}.empty{border:1px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted)}@media(max-width:450px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<h1>ゴミ箱</h1>
+<p class="lead">通常の削除はここへ移動します。復元時に同名ファイルがあれば、削除した方を別名で戻し、既存ファイルを上書きしません。</p>
+<p><a id="back" style="color:#ffc84a">構成へ戻る</a>　<a id="output" style="color:#ffc84a">書き出し管理</a></p>
+<section class="panel">
+<label for="project">プロジェクト名</label>
+<input id="project" value="01-segment-smoke-v3">
+<button id="load">ゴミ箱を読み込む</button>
+<p id="status" class="status">待機中</p>
+</section>
+<section class="panel">
+<div class="row"><button id="restoreAll" class="secondary">すべて元に戻す</button><button id="purgeAll" class="danger">ゴミ箱を空にする</button></div>
+<p class="hint">「ゴミ箱を空にする」は完全削除です。元に戻せません。</p>
+</section>
+<section class="panel">
+<h2>削除履歴</h2>
+<div id="records" class="empty">読み込み待ち</div>
+</section>
+</main>
+<script>
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('../',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
+let records=[];
+function projectName(){return $('#project').value.trim()}
+function escapeHtml(value){return String(value??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}
+function formatBytes(bytes){const value=Number(bytes||0);if(value<1024)return `${value} B`;if(value<1024**2)return `${(value/1024).toFixed(1)} KB`;if(value<1024**3)return `${(value/1024**2).toFixed(1)} MB`;return `${(value/1024**3).toFixed(2)} GB`}
+function formatDate(value){try{return new Intl.DateTimeFormat('ja-JP',{dateStyle:'short',timeStyle:'medium'}).format(new Date(value))}catch{return value||''}}
+async function requestJson(path,options={}){let response;try{response=await fetch(apiUrl(path),options)}catch(error){throw new Error('通信失敗: '+error.message)}const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text.slice(0,1000)||`HTTP ${response.status}`}}if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);return data}
+function updateLinks(){const name=encodeURIComponent(projectName());$('#back').href=`../?project=${name}`;$('#output').href=`output.html?project=${name}`}
+function render(){
+  const box=$('#records');
+  if(!records.length){box.className='empty';box.textContent='ゴミ箱は空です。';return}
+  box.className='';
+  box.innerHTML=records.map(record=>`<article class="record"><strong>${escapeHtml(record.groupLabel||record.kind||'削除項目')}</strong><p class="meta">ID: ${escapeHtml(record.trashId)}<br>削除: ${escapeHtml(formatDate(record.deletedAt))}<br>保持期限: ${escapeHtml(formatDate(record.retentionUntil))}<br>${record.items?.length||0}件 / ${formatBytes(record.sizeBytes||0)}</p><div class="row"><button class="secondary restore" data-id="${escapeHtml(record.trashId)}">元に戻す</button><button class="danger purge" data-id="${escapeHtml(record.trashId)}">完全に削除</button></div></article>`).join('');
+  box.querySelectorAll('.restore').forEach(button=>button.onclick=()=>restoreOne(button.dataset.id));
+  box.querySelectorAll('.purge').forEach(button=>button.onclick=()=>purgeOne(button.dataset.id));
+}
+async function load(){
+  const name=projectName();if(!name){$('#status').textContent='プロジェクト名を入力してください。';return}
+  updateLinks();$('#status').textContent='読み込み中…';
+  try{const data=await requestJson(`api/trash/${encodeURIComponent(name)}`,{cache:'no-store'});records=data.records||[];render();$('#status').textContent=`${data.count||0}件 / ${formatBytes(data.totalSizeBytes||0)}`;}catch(error){$('#status').textContent='読み込み失敗: '+error.message}
+}
+async function restoreOne(trashId){
+  const body=new FormData();body.append('project',projectName());body.append('trash_id',trashId);body.append('conflict_policy','rename');
+  $('#status').textContent='復元中…';
+  try{await requestJson('api/trash/restore',{method:'POST',body});await load();$('#status').textContent='元に戻しました。完成動画は要再書き出しです。'}catch(error){$('#status').textContent='復元失敗: '+error.message}
+}
+async function purgeOne(trashId){
+  if(!confirm('完全に削除すると元に戻せません。\n続けますか？'))return;
+  const typed=prompt('確認のため「完全削除」と入力してください。','');
+  if(typed!=='完全削除'){if(typed!==null)alert('入力が一致しないため中止しました。');return}
+  const body=new FormData();body.append('project',projectName());body.append('trash_id',trashId);body.append('confirmation','完全削除');
+  try{await requestJson('api/trash/purge',{method:'DELETE',body});await load();$('#status').textContent='完全に削除しました。'}catch(error){$('#status').textContent='完全削除失敗: '+error.message}
+}
+async function restoreAll(){
+  if(!records.length)return;
+  if(!confirm(`${records.length}件をすべて元に戻します。同名ファイルは別名で復元します。`))return;
+  const body=new FormData();body.append('project',projectName());body.append('conflict_policy','rename');
+  try{await requestJson('api/trash/restore-all',{method:'POST',body});await load();$('#status').textContent='すべて元に戻しました。完成動画は要再書き出しです。'}catch(error){$('#status').textContent='一括復元失敗: '+error.message}
+}
+async function purgeAll(){
+  if(!records.length)return;
+  if(!confirm(`ゴミ箱の${records.length}件を完全に削除します。\nこの操作は元に戻せません。`))return;
+  const typed=prompt('確認のため「ゴミ箱を空にする」と入力してください。','');
+  if(typed!=='ゴミ箱を空にする'){if(typed!==null)alert('入力が一致しないため中止しました。');return}
+  const body=new FormData();body.append('project',projectName());body.append('confirmation','ゴミ箱を空にする');
+  try{await requestJson('api/trash/purge-all',{method:'DELETE',body});await load();$('#status').textContent='ゴミ箱を空にしました。'}catch(error){$('#status').textContent='ゴミ箱の完全削除に失敗: '+error.message}
+}
+$('#load').onclick=load;$('#restoreAll').onclick=restoreAll;$('#purgeAll').onclick=purgeAll;$('#project').oninput=updateLinks;
+const params=new URLSearchParams(location.search);if(params.get('project'))$('#project').value=params.get('project');updateLinks();load();
+</script>
+</body>
+</html>
