@@ -6,7 +6,7 @@
 <title>限界開発 Vlog 構成</title>
 <style>
 :root{--bg:#0b0f14;--panel:#151c25;--panel2:#101720;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e;--warn:#ffd479}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px 14px 160px}h1{font-size:1.65rem;margin:.4em 0}.lead,.hint,.meta{color:var(--muted);line-height:1.6}.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;position:sticky;top:0;z-index:4;background:rgba(11,15,20,.96);padding:10px 0}.step{padding:9px 5px;border:1px solid var(--line);border-radius:999px;text-align:center;font-size:.78rem;color:var(--muted);text-decoration:none}.step.active{background:var(--gold);color:#17120a;border-color:var(--gold);font-weight:900}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;margin:14px 0}.section-title{display:flex;justify-content:space-between;align-items:center;gap:8px}.section-title h2{font-size:1.22rem;margin:.25em 0}.count{font-size:.8rem;color:var(--muted)}label{display:block;font-weight:800;margin:9px 0 6px}input,button,a.button{width:100%;font:inherit;border-radius:12px;padding:13px}input{background:#0d131b;color:#fff;border:1px solid #3a4b60}button,a.button{border:0;background:var(--gold);color:#17120a;font-weight:900;margin-top:9px;text-align:center;text-decoration:none;display:block}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.ghost{background:transparent!important;color:var(--ink)!important;border:1px solid var(--line)!important}.ok{color:var(--green)}.warning{color:var(--warn)}.status{white-space:pre-wrap;line-height:1.55;color:#d6dee7}.card{border:1px solid var(--line);background:var(--panel2);border-radius:14px;padding:13px;margin:10px 0}.card h3{margin:.1em 0 .35em;font-size:1.05rem;color:var(--gold)}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:.75rem;margin:3px 4px 3px 0}.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.actions button,.actions a{margin-top:7px}.empty{border:1px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted)}.global{position:fixed;left:0;right:0;bottom:0;background:rgba(11,15,20,.97);border-top:1px solid var(--line);padding:9px 12px calc(9px + env(safe-area-inset-bottom));z-index:8}.global-inner{max-width:760px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:7px}.global button,.global a{margin:0;padding:11px;font-size:.88rem}.snackbar{position:fixed;left:14px;right:14px;bottom:125px;z-index:12;max-width:720px;margin:auto;background:#202b38;border:1px solid #4a6078;border-radius:14px;padding:13px;display:none}.snackbar.show{display:block}.snackbar button{margin-top:8px}.toplinks{display:flex;gap:12px;flex-wrap:wrap}.toplinks a{color:var(--gold)}@media(max-width:430px){.actions{grid-template-columns:1fr}.global-inner{grid-template-columns:1fr 1fr}.step{font-size:.7rem;padding:8px 3px}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px 14px 160px}h1{font-size:1.65rem;margin:.4em 0}.lead,.hint,.meta{color:var(--muted);line-height:1.6}.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;position:sticky;top:0;z-index:4;background:rgba(11,15,20,.96);padding:10px 0}.step{padding:9px 5px;border:1px solid var(--line);border-radius:999px;text-align:center;font-size:.78rem;color:var(--muted);text-decoration:none}.step.active{background:var(--gold);color:#17120a;border-color:var(--gold);font-weight:900}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;margin:14px 0}.section-title{display:flex;justify-content:space-between;align-items:center;gap:8px}.section-title h2{font-size:1.22rem;margin:.25em 0}.count{font-size:.8rem;color:var(--muted)}label{display:block;font-weight:800;margin:9px 0 6px}input,button,a.button{width:100%;font:inherit;border-radius:12px;padding:13px}input{background:#0d131b;color:#fff;border:1px solid #3a4b60}button,a.button{border:0;background:var(--gold);color:#17120a;font-weight:900;margin-top:9px;text-align:center;text-decoration:none;display:block}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.ghost{background:transparent!important;color:var(--ink)!important;border:1px solid var(--line)!important}.ok{color:var(--green)}.warning{color:var(--warn)}.status{white-space:pre-wrap;line-height:1.55;color:#d6dee7}.card{border:1px solid var(--line);background:var(--panel2);border-radius:14px;padding:13px;margin:10px 0}.card h3{margin:.1em 0 .35em;font-size:1.05rem;color:var(--gold)}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:.75rem;margin:3px 4px 3px 0}.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.actions button,.actions a{margin-top:7px}.empty{border:1px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted)}.global{position:fixed;left:0;right:0;bottom:0;background:rgba(11,15,20,.97);border-top:1px solid var(--line);padding:9px 12px calc(9px + env(safe-area-inset-bottom));z-index:8}.global-inner{max-width:760px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:7px}.global button,.global a{margin:0;padding:11px;font-size:.88rem}.snackbar{position:fixed;left:14px;right:14px;bottom:125px;z-index:12;max-width:720px;margin:auto;background:#202b38;border:1px solid #4a6078;border-radius:14px;padding:13px;display:none}.snackbar.show{display:block}.snackbar button{margin-top:8px}.toplinks{display:flex;gap:12px;flex-wrap:wrap}.toplinks a{color:var(--gold)}.start-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.start-grid a{margin:0}.start-grid .button{min-height:54px;display:flex;align-items:center;justify-content:center}@media(max-width:430px){.actions{grid-template-columns:1fr}.global-inner{grid-template-columns:1fr 1fr}.step{font-size:.7rem;padding:8px 3px}.start-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -18,14 +18,25 @@
 <a class="step" id="outputStep">4. 書き出し</a>
 </div>
 <h1>Vlog構成</h1>
-<p class="lead">オープニング・本編・エンディングを分けて確認し、保存した音声をそのまま書き出せます。</p>
+<p class="lead">新しいVlogを作るか、保存済みのプロジェクトを開いて編集を続けます。</p>
+
+<section class="panel" id="start">
+<h2>プロジェクトを始める</h2>
+<p class="hint">最初から作る場合は「新規Vlogを作成」。保存済みの編集を続ける場合は、下のプロジェクト名を読み込んでください。</p>
+<div class="start-grid">
+<a class="button" href="static/index.html">新規Vlogを作成</a>
+<a class="button secondary" href="#composition">既存プロジェクトを開く</a>
+</div>
+</section>
+
 <div class="toplinks">
-<a id="wizardLink">素材を追加</a>
+<a id="wizardLink">このプロジェクトへ素材を追加</a>
 <a id="manageLink">音声をまとめて編集</a>
 <a id="trashLink">ゴミ箱</a>
 </div>
 
 <section class="panel" id="composition">
+<h2>既存プロジェクトを開く</h2>
 <label for="project">プロジェクト名</label>
 <input id="project" value="01-segment-smoke-v3" autocomplete="off">
 <button id="load">構成を読み込む</button>
@@ -94,7 +105,7 @@ async function requestJson(path,options={}){
 }
 function updateLinks(){
   const name=encodeURIComponent(projectName());
-  $('#wizardLink').href='static/index.html';
+  $('#wizardLink').href=`static/index.html?project=${name}`;
   $('#manageLink').href=`static/manage.html?project=${name}`;
   $('#trashLink').href=`static/trash.html?project=${name}`;
   $('#audioStep').href=`static/manage.html?project=${name}`;
