@@ -21,6 +21,8 @@ for required in \
   "${FEATURE}/web_console/static/timed-narration.html" \
   "${FEATURE}/web_console/static/timed-narration-finish.js" \
   "${FEATURE}/web_console/static/timed-narration-recording-overlay.js" \
+  "${FEATURE}/web_console/static/timed-narration-visibility-fix.js" \
+  "${FEATURE}/web_console/static/timed-narration-return-fix.js" \
   "${FEATURE}/scripts/apply_boundary_jump_cuts.py" \
   "${FEATURE}/scripts/audit_high_frequency_audio.py"; do
   if [[ ! -e "${required}" ]]; then
