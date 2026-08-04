@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
 """Symlink-aware entry point for the Vlog composition console.
 
-Oracle keeps ``projects`` and ``output`` as symlinks to the persistent production
-storage. The v3 feature layer originally compared resolved media paths against
-the lexical feature-checkout path, which made valid shared files appear outside
-the project root. This entry point patches only the path-identity helpers, adds
-an explicit blank-project creation endpoint, and reuses the complete v3 app.
+Oracle keeps ``projects`` and ``output`` as symlinks to persistent production
+storage. This layer keeps the v3 implementation intact while fixing storage path
+identity, providing a correctly rooted new-project wizard, and allowing safe
+Unicode project names.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
-from fastapi import Form, HTTPException
+from fastapi import Form, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse
 
-from web_console.app import ROOT
+from web_console import app as base
 from web_console import app_v3 as legacy
+from web_console.app import ROOT, STATIC_DIR
+
+
+def safe_project_name(value: str) -> str:
+    """Keep Japanese and other Unicode names while rejecting path separators."""
+    normalized = unicodedata.normalize("NFKC", value).strip()
+    cleaned = re.sub(r"[^\w.\-]+", "-", normalized, flags=re.UNICODE).strip("-.")
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="プロジェクト名を入力してください")
+    return cleaned[:80]
 
 
 def relative_to_root(path: Path) -> str:
@@ -70,6 +82,9 @@ def map_project_reference(
     return value
 
 
+# Patch the shared helpers used by both the base and v3 route functions.
+base.safe_project_name = safe_project_name
+legacy.safe_project_name = safe_project_name
 legacy.relative_to_root = relative_to_root
 legacy.project_fingerprint = project_fingerprint
 legacy.map_project_reference = map_project_reference
@@ -77,21 +92,35 @@ legacy.map_project_reference = map_project_reference
 app = legacy.app
 
 
+@app.middleware("http")
+async def redirect_static_wizard(request: Request, call_next):
+    """Open the old static wizard URL at a root where relative API paths work."""
+    if request.method == "GET" and request.url.path == "/static/index.html":
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(url=f"../new{query}", status_code=307)
+    return await call_next(request)
+
+
+@app.get("/new", include_in_schema=False)
+def new_project_wizard() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 @app.post("/api/project")
 def create_project(project: str = Form(...)) -> dict[str, Any]:
     """Create one empty Vlog project without overwriting existing work."""
-    safe_name = legacy.safe_project_name(project)
-    project_path = legacy.project_dir(safe_name)
+    safe_name = safe_project_name(project)
+    project_path = base.project_dir(safe_name)
     plan_file = project_path / "vlog-plan.json"
     if plan_file.exists() or (project_path.exists() and any(project_path.iterdir())):
         raise HTTPException(status_code=409, detail="同じ名前のプロジェクトが既にあります")
 
-    plan = legacy.default_plan(safe_name)
-    legacy.save_plan(project_path, plan)
+    plan = base.default_plan(safe_name)
+    base.save_plan(project_path, plan)
     return {
         "status": "created",
         "project": safe_name,
         "timeline": plan["timeline"],
         "nextUrl": f"/?project={safe_name}",
-        "materialUrl": f"/static/index.html?project={safe_name}",
+        "materialUrl": f"/new?project={safe_name}",
     }
