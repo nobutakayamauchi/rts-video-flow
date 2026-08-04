@@ -106,6 +106,14 @@ Boundary jump-cut policy:
 - BGM is excluded from silence detection
 - project source files are never modified
 
+Final mixed-audio safety policy:
+- render_vlog.sh scans the completed mix from 15 kHz upward
+- only loud, narrow-band tones sustained for at least 0.3 seconds are reported
+- default mode warns and records without modifying the completed video
+- reports are written to AUDIO_SAFETY.md and audio-safety.json
+- use AUDIO_SAFETY_MODE=strict to block completion on a candidate or audit failure
+- use AUDIO_SAFETY_MODE=off only when explicitly skipping the audit
+
 Render profile: ${VIDEO_WIDTH}x${VIDEO_HEIGHT} @ ${VIDEO_FPS} fps
 Preview mode transcription skipped: ${SKIP_TRANSCRIPTION}
 
@@ -118,6 +126,10 @@ Before rendering:
 - [ ] Audio warnings in manifest.json were reviewed
 - [ ] Subtitle wording and timing are acceptable
 - [ ] Opening, inserted materials and ending are in the intended order
+
+After rendering:
+- [ ] AUDIO_SAFETY.md reports PASS, or every warning interval was checked at low device volume
+- [ ] The final MIX was played once before publication
 
 Render:
 
