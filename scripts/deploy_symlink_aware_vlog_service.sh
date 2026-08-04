@@ -20,6 +20,7 @@ for required in \
   "${FEATURE}/web_console/static/camera-audio-recovery.js" \
   "${FEATURE}/web_console/static/timed-narration.html" \
   "${FEATURE}/web_console/static/timed-narration-finish.js" \
+  "${FEATURE}/web_console/static/timed-narration-recording-overlay.js" \
   "${FEATURE}/scripts/apply_boundary_jump_cuts.py" \
   "${FEATURE}/scripts/audit_high_frequency_audio.py"; do
   if [[ ! -e "${required}" ]]; then
