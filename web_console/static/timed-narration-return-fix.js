@@ -4,7 +4,7 @@
   if (!returnLink) return;
 
   const style = document.createElement('style');
-  style.dataset.timedNarrationReturnFix = 'v2';
+  style.dataset.timedNarrationReturnFix = 'v3';
   style.textContent = `
     #skip.saved-return {
       pointer-events: auto !important;
@@ -25,27 +25,47 @@
 
   function enableReturnNavigation() {
     if (!isSavedReturn()) return;
-    returnLink.classList.remove('saving-lock');
-    returnLink.removeAttribute('aria-disabled');
-    returnLink.style.pointerEvents = 'auto';
-    returnLink.href = returnUrl;
-    returnLink.setAttribute('role', 'button');
-    if (topBackLink) topBackLink.href = returnUrl;
+
+    // Only mutate values that actually differ. The previous implementation
+    // observed style/aria changes and rewrote those same attributes, causing an
+    // endless MutationObserver loop in iPhone Safari after a successful save.
+    if (returnLink.classList.contains('saving-lock')) {
+      returnLink.classList.remove('saving-lock');
+    }
+    if (returnLink.hasAttribute('aria-disabled')) {
+      returnLink.removeAttribute('aria-disabled');
+    }
+    if (returnLink.style.pointerEvents !== 'auto') {
+      returnLink.style.pointerEvents = 'auto';
+    }
+    if (returnLink.getAttribute('href') !== returnUrl) {
+      returnLink.setAttribute('href', returnUrl);
+    }
+    if (returnLink.getAttribute('role') !== 'button') {
+      returnLink.setAttribute('role', 'button');
+    }
+    if (topBackLink && topBackLink.getAttribute('href') !== returnUrl) {
+      topBackLink.setAttribute('href', returnUrl);
+    }
   }
 
-  const observer = new MutationObserver(enableReturnNavigation);
+  const observer = new MutationObserver(() => {
+    if (!isSavedReturn()) return;
+    enableReturnNavigation();
+    observer.disconnect();
+  });
   observer.observe(returnLink, {
     attributes: true,
-    attributeFilter: ['class', 'aria-disabled', 'style'],
+    attributeFilter: ['class'],
     childList: true,
     subtree: true,
   });
 
   function navigateToComposition(event) {
-    enableReturnNavigation();
     if (!isSavedReturn()) return;
     event.preventDefault();
     event.stopPropagation();
+    enableReturnNavigation();
     window.location.href = returnUrl;
   }
 
