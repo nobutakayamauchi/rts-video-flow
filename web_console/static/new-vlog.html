@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>新しいVlog</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px 15px 90px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}.hidden{display:none!important}h1{font-size:1.6rem}.lead,.hint,.meta{color:var(--muted);line-height:1.65}label{display:block;font-weight:800;margin:10px 0 6px}input,select,textarea,button,a.button{width:100%;font:inherit;border-radius:12px;padding:13px}input,select,textarea{background:#0d131b;color:#fff;border:1px solid #3a4b60}textarea{min-height:85px}button,a.button{display:block;border:0;background:var(--gold);color:#17120a;font-weight:900;text-align:center;text-decoration:none;margin-top:9px}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.ghost{background:transparent!important;color:#fff!important;border:1px solid var(--line)!important}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}video,img{width:100%;max-height:52vh;object-fit:contain;background:#000;border-radius:14px}.status{white-space:pre-wrap;line-height:1.6}.timeline{display:grid;gap:8px}.item{border:1px solid var(--line);border-radius:12px;padding:10px;background:#0d131b}.item strong{color:var(--gold)}button:disabled{opacity:.45}.recording{animation:pulse 1s infinite}@keyframes pulse{50%{opacity:.55}}@media(max-width:430px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main class="wrap">
+<h1>新しいVlog</h1>
+<p class="lead">インカメ、アウトカメ、保存済みファイルから素材を追加します。保存後、その素材の後入れ音声と表示時間を設定します。</p>
+<p><a href="./" style="color:#ffc84a">既存プロジェクト画面へ</a></p>
+
+<section id="projectPanel" class="panel">
+<h2>1. プロジェクト</h2>
+<label for="project">プロジェクト名</label>
+<input id="project" value="vlog-001" autocomplete="off">
+<button id="begin">新規作成して始める</button>
+<p id="projectStatus" class="status">待機中</p>
+</section>
+
+<section id="materialPanel" class="panel hidden">
+<h2>2. 素材を追加</h2>
+<p id="projectName" class="meta"></p>
+<label for="role">素材の種類</label>
+<select id="role">
+<option value="opening">オープニング動画</option>
+<option value="screen">画面収録</option>
+<option value="screenshot">画像・スクリーンショット</option>
+<option value="camera">通常動画</option>
+<option value="ending">エンディング動画</option>
+</select>
+
+<label for="fileInput">保存済みファイルを選ぶ</label>
+<input id="fileInput" type="file" accept="video/*,image/*">
+<video id="preview" class="hidden" controls playsinline></video>
+<img id="imagePreview" class="hidden" alt="選択画像">
+
+<div id="cameraArea">
+<div class="row">
+<button id="frontCamera" class="secondary">インカメを起動</button>
+<button id="rearCamera" class="secondary">アウトカメを起動</button>
+</div>
+<div class="row">
+<button id="startRecord">録画開始</button>
+<button id="stopRecord" class="danger" disabled>録画停止</button>
+</div>
+</div>
+
+<div id="screenHelp" class="hidden hint">iPhoneのコントロールセンターで画面収録し、保存後に上のファイル選択から追加してください。</div>
+<div id="descriptionBox" class="hidden">
+<label for="description">画像の説明（任意）</label>
+<textarea id="description" placeholder="この画像で何を伝えるか"></textarea>
+</div>
+<button id="save" disabled>この素材をサーバーへ保存</button>
+<p id="materialStatus" class="status">素材を選択または撮影してください。</p>
+</section>
+
+<section id="existingPanel" class="panel hidden">
+<h2>登録済み素材</h2>
+<div id="timeline" class="timeline"></div>
+<a id="composition" class="button secondary">構成画面へ戻る</a>
+</section>
+</main>
+<script>
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('./',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
+const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'画像',camera:'通常動画'};
+const state={project:'',timeline:[],blob:null,blobName:'',stream:null,recorder:null,chunks:[]};
+function status(id,text){$(id).textContent=text}
+function stopStream(){if(state.stream){state.stream.getTracks().forEach(track=>track.stop());state.stream=null}}
+function bestVideoMime(){return ['video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9,opus','video/webm'].find(type=>window.MediaRecorder&&MediaRecorder.isTypeSupported?.(type))||''}
+function extension(type){const value=(type||'').toLowerCase();if(value.includes('mp4'))return '.mp4';if(value.includes('webm'))return '.webm';return '.mov'}
+async function requestJson(path,options={}){let response;try{response=await fetch(apiUrl(path),options)}catch(error){throw new Error('通信失敗: '+error.message)}const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text||`HTTP ${response.status}`}}if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);return data}
+function uploadForm(path,body,onProgress){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST',apiUrl(path));xhr.upload.onprogress=event=>{if(event.lengthComputable)onProgress?.(Math.round(event.loaded/event.total*100))};xhr.onerror=()=>reject(new Error('アップロード通信に失敗しました'));xhr.onload=()=>{let data={};try{data=xhr.responseText?JSON.parse(xhr.responseText):{}}catch{data={detail:xhr.responseText||`HTTP ${xhr.status}`}}if(xhr.status<200||xhr.status>=300){reject(new Error(data.detail||`HTTP ${xhr.status}`));return}resolve(data)};xhr.timeout=60*60*1000;xhr.ontimeout=()=>reject(new Error('アップロードがタイムアウトしました'));xhr.send(body)})}
+function resetPreview(){stopStream();state.blob=null;state.blobName='';$('#fileInput').value='';$('#preview').pause();$('#preview').removeAttribute('src');$('#preview').srcObject=null;$('#preview').classList.add('hidden');$('#imagePreview').removeAttribute('src');$('#imagePreview').classList.add('hidden');$('#save').disabled=true}
+function renderTimeline(){const box=$('#timeline');box.innerHTML=state.timeline.length?state.timeline.map((item,index)=>`<div class="item"><strong>${index+1}. ${labels[item.role]||item.role}</strong><div class="meta">${item.source||''}${item.narration?' / 後入れ音声あり':''}</div></div>`).join(''):'<p class="hint">まだ素材はありません。</p>'}
+function chooseDefaultRole(){return state.timeline.some(item=>item.role==='opening')?'screen':'opening'}
+function showMaterial(){resetPreview();$('#projectPanel').classList.add('hidden');$('#materialPanel').classList.remove('hidden');$('#existingPanel').classList.remove('hidden');$('#projectName').textContent=`プロジェクト：${state.project}`;$('#composition').href=`./?project=${encodeURIComponent(state.project)}`;$('#role').value=chooseDefaultRole();updateRole();renderTimeline()}
+async function loadProject(){const data=await requestJson(`api/project/${encodeURIComponent(state.project)}`,{cache:'no-store'});state.timeline=data.timeline||[]}
+async function begin(){state.project=$('#project').value.trim();if(!state.project)return;status('#projectStatus','準備中…');const body=new FormData();body.append('project',state.project);try{const created=await requestJson('api/project',{method:'POST',body});state.project=created.project;$('#project').value=state.project;state.timeline=[];showMaterial();status('#projectStatus','新規作成しました。')}catch(error){if(String(error.message).includes('既にあります')){try{await loadProject();showMaterial();status('#projectStatus','既存プロジェクトを開きました。')}catch(loadError){status('#projectStatus','読込失敗: '+loadError.message)}}else{status('#projectStatus','作成失敗: '+error.message)}}}
+function updateRole(){const role=$('#role').value;const image=role==='screenshot';const screen=role==='screen';$('#cameraArea').classList.toggle('hidden',image||screen);$('#screenHelp').classList.toggle('hidden',!screen);$('#descriptionBox').classList.toggle('hidden',!image);resetPreview();status('#materialStatus','素材を選択または撮影してください。')}
+async function startCamera(facing){try{stopStream();state.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}},audio:true});$('#preview').classList.remove('hidden');$('#preview').srcObject=state.stream;$('#preview').muted=true;$('#preview').controls=false;await $('#preview').play();status('#materialStatus',facing==='user'?'インカメ起動済み':'アウトカメ起動済み')}catch(error){status('#materialStatus','カメラ起動失敗: '+error.message)}}
+async function record(){if(!state.stream)await startCamera('user');if(!state.stream)return;const mime=bestVideoMime();state.chunks=[];try{state.recorder=new MediaRecorder(state.stream,mime?{mimeType:mime}:undefined)}catch(error){status('#materialStatus','録画開始失敗: '+error.message);return}state.recorder.ondataavailable=event=>{if(event.data?.size)state.chunks.push(event.data)};state.recorder.onstop=()=>{const type=state.recorder.mimeType||mime||'video/webm';state.blob=new Blob(state.chunks,{type});state.blobName=`capture${extension(type)}`;$('#preview').srcObject=null;$('#preview').src=URL.createObjectURL(state.blob);$('#preview').muted=false;$('#preview').controls=true;$('#save').disabled=false;stopStream();$('#startRecord').classList.remove('recording');$('#stopRecord').disabled=true;status('#materialStatus',`録画完了 ${(state.blob.size/1024/1024).toFixed(1)} MB`)};state.recorder.start(500);$('#startRecord').classList.add('recording');$('#stopRecord').disabled=false;status('#materialStatus','録画中…')}
+$('#begin').onclick=begin;
+$('#role').onchange=updateRole;
+$('#fileInput').onchange=()=>{const file=$('#fileInput').files?.[0];if(!file)return;resetPreview();state.blob=file;state.blobName=file.name;$('#save').disabled=false;if(file.type.startsWith('image/')){$('#imagePreview').src=URL.createObjectURL(file);$('#imagePreview').classList.remove('hidden')}else{$('#preview').src=URL.createObjectURL(file);$('#preview').muted=false;$('#preview').controls=true;$('#preview').classList.remove('hidden')}status('#materialStatus',`選択済み：${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`) };
+$('#frontCamera').onclick=()=>startCamera('user');
+$('#rearCamera').onclick=()=>startCamera('environment');
+$('#startRecord').onclick=record;
+$('#stopRecord').onclick=()=>{if(state.recorder&&state.recorder.state!=='inactive')state.recorder.stop()};
+$('#save').onclick=async()=>{if(!state.blob)return;const body=new FormData();body.append('project',state.project);body.append('role',$('#role').value);body.append('description',$('#description').value);body.append('media',state.blob,state.blobName||'material.bin');$('#save').disabled=true;status('#materialStatus','保存中…');try{const data=await uploadForm('api/material',body,percent=>status('#materialStatus',`保存中… ${percent}%`));state.timeline=data.timeline||[];const item=data.item;location.href=`static/timed-narration.html?project=${encodeURIComponent(state.project)}&item=${encodeURIComponent(item.id)}`}catch(error){status('#materialStatus','保存失敗: '+error.message);$('#save').disabled=false}};
+const query=new URLSearchParams(location.search).get('project');if(query){$('#project').value=query;state.project=query;loadProject().then(showMaterial).catch(()=>{})}
+window.addEventListener('beforeunload',stopStream);
+</script>
+</body>
+</html>
