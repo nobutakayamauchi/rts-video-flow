@@ -101,108 +101,197 @@
 
 (() => {
   const style = document.createElement('style');
-  style.dataset.cameraControlLayout = 'v1';
+  style.dataset.cameraControlLayout = 'v2';
   style.textContent = `
     body.camera-active {
-      padding-bottom: calc(184px + env(safe-area-inset-bottom));
+      overflow: hidden;
     }
-    body.camera-active #preview {
-      display: block;
-      width: 100%;
-      height: auto;
-      max-height: min(38svh, 390px);
-      object-fit: contain;
-      position: relative;
-      z-index: 1;
-      margin: 10px 0;
-    }
-    #cameraControlDock {
-      position: fixed;
-      left: max(10px, env(safe-area-inset-left));
-      right: max(10px, env(safe-area-inset-right));
-      bottom: max(8px, env(safe-area-inset-bottom));
-      z-index: 1000;
-      max-width: 740px;
-      margin: 0 auto;
-      padding: 10px;
-      border: 2px solid #52647b;
-      border-radius: 18px;
-      background: rgba(11, 15, 20, 0.96);
-      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
-      -webkit-backdrop-filter: blur(14px);
-      backdrop-filter: blur(14px);
-    }
-    #cameraControlDock.hidden {
+    body.camera-active #cameraSafety {
       display: none !important;
     }
-    #cameraControlDock .camera-dock-label {
-      margin: 0 0 7px;
+    #cameraPreviewFrame {
+      display: none;
+    }
+    #cameraPreviewFrame.active {
+      position: fixed;
+      inset:
+        max(8px, env(safe-area-inset-top))
+        max(8px, env(safe-area-inset-right))
+        max(8px, env(safe-area-inset-bottom))
+        max(8px, env(safe-area-inset-left));
+      z-index: 1000;
+      display: block;
+      overflow: hidden;
+      border: 3px solid #ff3b30;
+      border-radius: 20px;
+      background: #000;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.72);
+    }
+    #cameraPreviewFrame #preview {
+      display: block;
+      width: 100%;
+      height: 100%;
+      max-height: none;
+      margin: 0;
+      border-radius: 0;
+      object-fit: contain;
+      background: #000;
+    }
+    .camera-frame-overlay {
+      position: absolute;
+      left: 0;
+      right: 0;
+      z-index: 3;
+      color: #fff;
+      background: rgba(12, 15, 20, 0.68);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+    }
+    #cameraTopOverlay {
+      top: 0;
+      padding: 12px 14px 11px;
+      border-bottom: 1px solid rgba(255,255,255,.2);
+      pointer-events: none;
+    }
+    #cameraTopOverlay .camera-overlay-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+    }
+    #cameraTopOverlay .camera-safety-title,
+    #cameraTopOverlay .camera-elapsed {
+      color: #fff;
+    }
+    #cameraTopOverlay .camera-note {
+      margin: 7px 0 0;
+      color: #ffe1de;
+      font-size: .9rem;
+      line-height: 1.4;
+    }
+    #cameraTopOverlay .camera-disappears-note {
+      margin: 5px 0 0;
+      color: #fff4b8;
+      font-size: .83rem;
+      font-weight: 850;
+    }
+    #cameraBottomOverlay {
+      bottom: 0;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+      border-top: 1px solid rgba(255,255,255,.2);
+    }
+    #cameraBottomOverlay .camera-dock-label {
+      margin: 0 0 8px;
       text-align: center;
-      color: #ffd8d5;
-      font-size: 0.9rem;
+      color: #fff4b8;
+      font-size: .88rem;
       font-weight: 900;
     }
-    #cameraControlDock .camera-record-row {
+    #cameraBottomOverlay .camera-record-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
-    #cameraControlDock button {
-      min-height: 52px;
+    #cameraBottomOverlay button {
+      min-height: 54px;
       margin-top: 0;
       touch-action: manipulation;
     }
-    #cameraControlDock #endCamera {
-      margin-top: 8px;
+    #cameraBottomOverlay #endCamera {
       min-height: 46px;
+      margin-top: 8px;
     }
     @media (max-width: 430px) {
-      body.camera-active #preview {
-        max-height: 36svh;
+      #cameraPreviewFrame.active {
+        border-radius: 16px;
       }
-      #cameraControlDock .camera-record-row {
-        grid-template-columns: 1fr 1fr;
+      #cameraTopOverlay {
+        padding: 10px 11px 9px;
+      }
+      #cameraTopOverlay .camera-note {
+        font-size: .82rem;
+      }
+      #cameraBottomOverlay {
+        padding-left: 9px;
+        padding-right: 9px;
       }
     }
   `;
   document.head.appendChild(style);
 
+  const preview = document.querySelector('#preview');
   const startButton = document.querySelector('#startRecord');
   const stopButton = document.querySelector('#stopRecord');
   const endButton = document.querySelector('#endCamera');
-  if (!startButton || !stopButton || !endButton) return;
+  const safetyBox = document.querySelector('#cameraSafety');
+  const safetyDot = safetyBox?.querySelector('.camera-dot');
+  const safetyTitle = document.querySelector('#cameraSafetyTitle');
+  const safetyElapsed = document.querySelector('#cameraElapsed');
+  const safetyDetail = document.querySelector('#cameraSafetyDetail');
+  if (!preview || !startButton || !stopButton || !endButton) return;
+
+  const previewHome = preview.parentElement;
+  const previewMarker = document.createComment('camera-preview-home');
+  previewHome?.insertBefore(previewMarker, preview);
 
   const originalRecordRow = startButton.parentElement;
   const originalEndParent = endButton.parentElement;
-  const dock = document.createElement('div');
-  dock.id = 'cameraControlDock';
-  dock.className = 'hidden';
-  dock.setAttribute('role', 'region');
-  dock.setAttribute('aria-label', 'カメラ操作');
+
+  const frame = document.createElement('div');
+  frame.id = 'cameraPreviewFrame';
+  frame.setAttribute('role', 'region');
+  frame.setAttribute('aria-label', 'カメラプレビューと撮影操作');
+
+  const topOverlay = document.createElement('div');
+  topOverlay.id = 'cameraTopOverlay';
+  topOverlay.className = 'camera-frame-overlay';
+
+  const overlayHead = document.createElement('div');
+  overlayHead.className = 'camera-overlay-head';
+  if (safetyDot) overlayHead.appendChild(safetyDot);
+  if (safetyTitle) overlayHead.appendChild(safetyTitle);
+  if (safetyElapsed) overlayHead.appendChild(safetyElapsed);
+  topOverlay.appendChild(overlayHead);
+  if (safetyDetail) topOverlay.appendChild(safetyDetail);
+
+  const disappearsNote = document.createElement('p');
+  disappearsNote.className = 'camera-disappears-note';
+  disappearsNote.textContent = 'この表示はカメラ・撮影の終了後に消えます';
+  topOverlay.appendChild(disappearsNote);
+
+  const bottomOverlay = document.createElement('div');
+  bottomOverlay.id = 'cameraBottomOverlay';
+  bottomOverlay.className = 'camera-frame-overlay';
 
   const label = document.createElement('p');
   label.className = 'camera-dock-label';
-  label.textContent = 'カメラ操作は常にここに表示されます';
+  label.textContent = '撮影操作 — ボタンは映像の上に固定されています';
 
   const recordRow = document.createElement('div');
   recordRow.className = 'camera-record-row';
   recordRow.append(startButton, stopButton);
-  dock.append(label, recordRow, endButton);
-  document.body.appendChild(dock);
+  bottomOverlay.append(label, recordRow, endButton);
+
+  frame.append(preview, topOverlay, bottomOverlay);
+  document.body.appendChild(frame);
+
+  function restorePreviewHome() {
+    if (!previewMarker.parentNode) return;
+    previewMarker.parentNode.insertBefore(preview, previewMarker.nextSibling);
+  }
 
   function setCameraLayoutActive(active) {
     document.body.classList.toggle('camera-active', active);
-    dock.classList.toggle('hidden', !active);
+    frame.classList.toggle('active', active);
     if (active) {
-      requestAnimationFrame(() => {
-        const preview = document.querySelector('#preview');
-        preview?.scrollIntoView?.({block: 'center', behavior: 'smooth'});
-      });
+      frame.insertBefore(preview, topOverlay);
+    } else {
+      restorePreviewHome();
     }
   }
 
   const originalUpdateCameraSafety = updateCameraSafety;
-  updateCameraSafety = function updateSafetyAndControls(recording = false) {
+  updateCameraSafety = function updateSafetyAndOverlays(recording = false) {
     const result = originalUpdateCameraSafety(recording);
     setCameraLayoutActive(Boolean(state.stream));
     return result;
@@ -215,8 +304,9 @@
     return result;
   };
 
-  // Keep fallbacks for script or browser errors. Moving the buttons preserves
-  // their existing onclick handlers, but the old containers remain harmless.
+  // Moving the existing elements preserves all original handlers and the
+  // existing elapsed-time updates while replacing the bulky page block with
+  // semi-transparent overlays on the camera frame.
   originalRecordRow?.classList?.add('camera-controls-placeholder');
   originalEndParent?.classList?.add('camera-end-placeholder');
 })();
