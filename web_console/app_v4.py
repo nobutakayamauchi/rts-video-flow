@@ -2,10 +2,10 @@
 """Symlink-aware entry point for the Vlog composition console.
 
 Oracle keeps ``projects`` and ``output`` as symlinks to the persistent production
-storage.  The v3 feature layer originally compared resolved media paths against
+storage. The v3 feature layer originally compared resolved media paths against
 the lexical feature-checkout path, which made valid shared files appear outside
-the project root.  This entry point patches only the three path-identity helpers
-and reuses the complete v3 application and routes.
+the project root. This entry point patches only the path-identity helpers, adds
+an explicit blank-project creation endpoint, and reuses the complete v3 app.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException
+from fastapi import Form, HTTPException
 
 from web_console.app import ROOT
 from web_console import app_v3 as legacy
@@ -75,3 +75,23 @@ legacy.project_fingerprint = project_fingerprint
 legacy.map_project_reference = map_project_reference
 
 app = legacy.app
+
+
+@app.post("/api/project")
+def create_project(project: str = Form(...)) -> dict[str, Any]:
+    """Create one empty Vlog project without overwriting existing work."""
+    safe_name = legacy.safe_project_name(project)
+    project_path = legacy.project_dir(safe_name)
+    plan_file = project_path / "vlog-plan.json"
+    if plan_file.exists() or (project_path.exists() and any(project_path.iterdir())):
+        raise HTTPException(status_code=409, detail="同じ名前のプロジェクトが既にあります")
+
+    plan = legacy.default_plan(safe_name)
+    legacy.save_plan(project_path, plan)
+    return {
+        "status": "created",
+        "project": safe_name,
+        "timeline": plan["timeline"],
+        "nextUrl": f"/?project={safe_name}",
+        "materialUrl": f"/static/index.html?project={safe_name}",
+    }
