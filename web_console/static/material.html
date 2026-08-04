@@ -19,7 +19,8 @@
 <p id="source" class="meta"></p>
 <div id="badges"></div>
 <p id="description"></p>
-<a id="audioEdit" class="button secondary">音声・範囲差し替えを編集</a>
+<a id="timedAudio" class="button secondary">後入れ音声・表示時間を設定</a>
+<a id="rangeAudio" class="button secondary">範囲音声を編集</a>
 <button id="delete" class="danger">構成から削除</button>
 <p id="status" class="status"></p>
 </section>
@@ -40,7 +41,8 @@ async function requestJson(path,options={}){const response=await fetch(apiUrl(pa
 function badge(text){return `<span class="badge">${escapeHtml(text)}</span>`}
 async function load(){
   $('#back').href=`../?project=${encodeURIComponent(project)}`;
-  $('#audioEdit').href=`manage.html?project=${encodeURIComponent(project)}&item=${encodeURIComponent(itemId)}`;
+  $('#timedAudio').href=`timed-narration.html?project=${encodeURIComponent(project)}&item=${encodeURIComponent(itemId)}`;
+  $('#rangeAudio').href=`manage.html?project=${encodeURIComponent(project)}&item=${encodeURIComponent(itemId)}`;
   if(!project||!itemId){$('#status').textContent='project または item がありません。';return}
   try{
     const data=await requestJson(`api/project/${encodeURIComponent(project)}`,{cache:'no-store'});
@@ -53,6 +55,7 @@ async function load(){
     $('#badges').innerHTML=badge(audioLabels[item.audioMode]||item.audioMode||'音声未設定')+badge(`範囲音声 ${segments}件`)+badge(`字幕 ${item.subtitleMode||'auto'}`);
     const source=apiUrl(`api/source/${encodeURIComponent(project)}/${encodeURIComponent(itemId)}`);
     $('#preview').innerHTML=item.type==='image'?`<img src="${source}" alt="素材プレビュー">`:`<video src="${source}" controls playsinline></video>`;
+    $('#rangeAudio').style.display=item.type==='video'?'block':'none';
     $('#status').textContent='読み込み完了';
   }catch(error){$('#status').textContent='読み込み失敗: '+error.message}
 }
