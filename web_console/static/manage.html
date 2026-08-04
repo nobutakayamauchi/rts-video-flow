@@ -1,1 +1,204 @@
-PLACEHOLDER
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>限界開発 Vlog 素材管理</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e;--record:#d9364b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:22px 16px 90px}h1{font-size:1.7rem;margin:.3em 0}h2,h3{line-height:1.35}.lead,.hint{color:var(--muted);line-height:1.65}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:15px 0}label{display:block;font-weight:800;margin:10px 0 6px}input,select,button{width:100%;font:inherit;border-radius:12px;padding:14px}input,select{background:#0d131b;color:#fff;border:1px solid #3a4b60}button{border:0;background:var(--gold);color:#17120a;font-weight:900;margin-top:10px}button:disabled,input:disabled,select:disabled{opacity:.5}.secondary{background:var(--blue);color:#fff}.record{background:var(--record);color:#fff}.record.active{animation:pulse 1.2s infinite}.danger{background:var(--red);color:#1b0b09}.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}.item{padding:14px;border:1px solid var(--line);border-radius:14px;background:#0d131b;margin:10px 0;overflow-wrap:anywhere}.item>strong{color:var(--gold)}.meta{color:var(--muted);font-size:.9rem;line-height:1.55}.status{white-space:pre-wrap;color:#d6dee7}.empty{color:var(--muted);padding:15px;text-align:center;border:1px dashed var(--line);border-radius:12px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.audio-box,.range-box{margin-top:12px;padding:12px;border:1px dashed var(--line);border-radius:12px}.range-box{border-color:#38526d}.segment{padding:10px;margin:8px 0;background:#111923;border-radius:10px}.segment strong{color:var(--green)}.segment .danger{padding:9px;margin-top:7px}.warning{color:#ffd479}.ok{color:var(--green)}.disabled-note{color:var(--muted);font-size:.85rem}.capture{padding:10px;margin-top:10px;background:#101720;border-radius:10px}.capture audio{width:100%;margin-top:10px}.capture-state{min-height:1.4em;margin:8px 0 0;color:var(--muted)}a{color:var(--gold)}
+@keyframes pulse{50%{opacity:.55}}
+</style>
+</head>
+<body><main class="wrap">
+<h1>Vlog素材管理</h1>
+<p class="lead">素材全体、または動画の指定秒数だけ後付け音声へ差し替えられます。iPhoneのマイクからその場で録音して保存でき、音声ファイル選択も予備手段として残します。</p>
+<p><a id="back" href="../">Vlog画面へ戻る</a></p>
+<section class="panel">
+<label for="project">プロジェクト名</label>
+<input id="project" value="vlog-001" autocomplete="off">
+<button id="load">素材を読み込む</button>
+<p id="status" class="status">待機中</p>
+</section>
+<section class="panel">
+<h2>登録済み素材</h2>
+<div id="items" class="empty">まだ読み込んでいません。</div>
+</section>
+</main>
+<script>
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('../',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
+const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'スクリーンショット',camera:'通常動画'};
+const audioLabels={source:'元動画の音声',narration:'後付けナレーション',mute:'無音'};
+let timeline=[];
+let activeCapture=null;
+const recordedFiles=new Map();
+const recordedUrls=new Map();
+
+function projectName(){return $('#project').value.trim()}
+function setStatus(message){$('#status').textContent=message}
+function escapeHtml(value){return String(value??'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}
+function captureKey(kind,itemId){return `${kind}:${itemId}`}
+function captureSelector(key){return `[data-capture-key="${CSS.escape(key)}"]`}
+function formatSeconds(value){return `${Number(value||0).toFixed(1)}秒`}
+
+async function requestJson(path,options={}){
+  let response;
+  try{response=await fetch(apiUrl(path),options)}catch(error){throw new Error('通信失敗: '+error.message)}
+  const text=await response.text();
+  let data={};
+  try{data=text?JSON.parse(text):{}}catch{data={detail:text.slice(0,400)||`HTTP ${response.status}`}}
+  if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);
+  return data;
+}
+
+function audioOptions(item){
+  const sourceDisabled=item.type==='image'?'disabled':'';
+  const narrationDisabled=item.narration&&!item.narrationSegments?.length?'':'disabled';
+  return `<option value="source" ${sourceDisabled}>元動画の音声</option><option value="narration" ${narrationDisabled}>後付けナレーション</option><option value="mute">無音</option>`;
+}
+
+function capturePanel(kind,item,blocked=false){
+  const key=captureKey(kind,item.id);
+  const title=kind==='whole'?'素材全体をその場で録音':'指定範囲をその場で録音';
+  return `<div class="capture" data-capture-key="${escapeHtml(key)}">
+    <strong>${title}</strong>
+    <button class="record capture-toggle" data-kind="${kind}" data-id="${escapeHtml(item.id)}" ${blocked?'disabled':''}>● 録音開始</button>
+    <p class="capture-state">録音前です。マイク許可を求められたら「許可」を選んでください。</p>
+    <audio class="capture-preview" controls hidden></audio>
+    <button class="ghost capture-discard" data-kind="${kind}" data-id="${escapeHtml(item.id)}" hidden>録音を捨てる</button>
+  </div>`;
+}
+
+function segmentList(item){
+  const segments=Array.isArray(item.narrationSegments)?item.narrationSegments:[];
+  if(!segments.length)return '<p class="meta">範囲ナレーションは未登録です。</p>';
+  return segments.map(segment=>`<div class="segment"><strong>${formatSeconds(segment.startSeconds)}〜${formatSeconds(segment.endSeconds)}</strong><div class="meta">🎙 ${escapeHtml(segment.narration||'')}</div>${segment.audioWarnings?.length?`<div class="warning">${escapeHtml(segment.audioWarnings.join(' / '))}</div>`:''}<button class="danger delete-segment" data-item-id="${escapeHtml(item.id)}" data-segment-id="${escapeHtml(segment.id)}">この範囲音声を削除</button></div>`).join('');
+}
+
+function rangeControls(item){
+  if(item.type!=='video')return '';
+  const blocked=item.audioMode==='narration';
+  return `<div class="range-box">
+    <h3>指定範囲だけ音声を差し替える</h3>
+    <p class="hint">開始秒〜終了秒の元音声だけを消し、録音または選択した音声へ置き換えます。範囲同士は重ねられません。</p>
+    ${blocked?'<p class="warning">素材全体の後付けナレーション中です。音声モードを「元動画の音声」か「無音」へ変更してください。</p>':''}
+    ${segmentList(item)}
+    <div class="row"><div><label>開始秒</label><input class="range-start" data-id="${escapeHtml(item.id)}" type="number" min="0" step="0.1" placeholder="例 8.0" ${blocked?'disabled':''}></div><div><label>終了秒</label><input class="range-end" data-id="${escapeHtml(item.id)}" type="number" min="0.1" step="0.1" placeholder="例 17.0" ${blocked?'disabled':''}></div></div>
+    ${capturePanel('segment',item,blocked)}
+    <label>または音声ファイルを選択</label>
+    <input class="segment-file" data-id="${escapeHtml(item.id)}" type="file" accept="audio/*,video/mp4,video/webm" ${blocked?'disabled':''}>
+    <button class="secondary upload-segment" data-id="${escapeHtml(item.id)}" ${blocked?'disabled':''}>この範囲へ音声を保存</button>
+  </div>`;
+}
+
+function render(){
+  const box=$('#items');
+  if(!timeline.length){box.className='empty';box.innerHTML='登録済み素材はありません。';return}
+  box.className='';
+  box.innerHTML=timeline.map((item,index)=>`<article class="item">
+    <strong>${index+1}. ${labels[item.role]||item.role||'素材'}</strong>
+    <p class="meta">${escapeHtml(item.source||'')}</p>
+    ${(item.explanation||item.description)?`<p>${escapeHtml(item.explanation||item.description)}</p>`:''}
+    <div class="audio-box">
+      <p class="meta">現在の音声：${audioLabels[item.audioMode]||item.audioMode||'未設定'}</p>
+      ${item.narration?`<p class="meta">🎙 ${escapeHtml(item.narration)}</p>`:'<p class="meta">素材全体の後付けナレーションは未登録です。</p>'}
+      ${item.audioWarnings?.length?`<p class="warning">${escapeHtml(item.audioWarnings.join(' / '))}</p>`:''}
+      <label>素材全体の音声モード</label>
+      <select class="audio-mode" data-id="${escapeHtml(item.id)}">${audioOptions(item)}</select>
+      ${capturePanel('whole',item,Boolean(item.narrationSegments?.length))}
+      <label>または音声ファイルを選択</label>
+      <input class="narration-file" data-id="${escapeHtml(item.id)}" type="file" accept="audio/*,video/mp4,video/webm" ${item.narrationSegments?.length?'disabled':''}>
+      ${item.narrationSegments?.length?'<p class="disabled-note">範囲ナレーションがあるため、素材全体の差し替えは無効です。</p>':''}
+      <button class="secondary upload-narration" data-id="${escapeHtml(item.id)}" ${item.narrationSegments?.length?'disabled':''}>素材全体の音声を保存</button>
+    </div>
+    ${rangeControls(item)}
+    <button class="danger delete" data-id="${escapeHtml(item.id)}">この素材を削除</button>
+  </article>`).join('');
+
+  box.querySelectorAll('.audio-mode').forEach(select=>{const item=timeline.find(value=>value.id===select.dataset.id);select.value=item?.audioMode||(item?.type==='video'?'source':'mute');select.onchange=()=>changeAudioMode(select.dataset.id,select.value)});
+  box.querySelectorAll('.capture-toggle').forEach(button=>button.onclick=()=>toggleCapture(button.dataset.kind,button.dataset.id));
+  box.querySelectorAll('.capture-discard').forEach(button=>button.onclick=()=>discardCapture(button.dataset.kind,button.dataset.id));
+  box.querySelectorAll('.upload-narration').forEach(button=>button.onclick=()=>uploadNarration(button.dataset.id));
+  box.querySelectorAll('.upload-segment').forEach(button=>button.onclick=()=>uploadSegment(button.dataset.id));
+  box.querySelectorAll('.delete-segment').forEach(button=>button.onclick=()=>removeSegment(button.dataset.itemId,button.dataset.segmentId));
+  box.querySelectorAll('.delete').forEach(button=>button.onclick=()=>removeItem(button.dataset.id));
+  restoreCapturePreviews();
+}
+
+function preferredMimeType(){
+  if(!window.MediaRecorder)return '';
+  return ['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'].find(type=>MediaRecorder.isTypeSupported?.(type))||'';
+}
+function extensionForMime(type){if(type.includes('mp4'))return 'm4a';if(type.includes('ogg'))return 'ogg';return 'webm'}
+function captureElements(key){const root=document.querySelector(captureSelector(key));return root?{root,button:root.querySelector('.capture-toggle'),state:root.querySelector('.capture-state'),preview:root.querySelector('.capture-preview'),discard:root.querySelector('.capture-discard')}:null}
+function setCaptureState(key,message){const elements=captureElements(key);if(elements)elements.state.textContent=message}
+
+async function toggleCapture(kind,itemId){
+  const key=captureKey(kind,itemId);
+  if(activeCapture?.key===key){activeCapture.recorder.stop();return}
+  if(activeCapture){setStatus('別の録音を停止してから開始してください。');return}
+  if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){setStatus('このブラウザでは直接録音できません。下の音声ファイル選択を使ってください。');return}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+    const mimeType=preferredMimeType();
+    const recorder=new MediaRecorder(stream,mimeType?{mimeType}:undefined);
+    const chunks=[];const started=Date.now();
+    const timer=setInterval(()=>setCaptureState(key,`録音中… ${((Date.now()-started)/1000).toFixed(1)}秒`),100);
+    recorder.ondataavailable=event=>{if(event.data?.size)chunks.push(event.data)};
+    recorder.onerror=event=>setStatus('録音失敗: '+(event.error?.message||'MediaRecorder error'));
+    recorder.onstop=()=>{
+      clearInterval(timer);stream.getTracks().forEach(track=>track.stop());
+      const type=recorder.mimeType||mimeType||'audio/webm';
+      const blob=new Blob(chunks,{type});
+      if(!blob.size){setCaptureState(key,'録音データが空でした。もう一度試してください。');activeCapture=null;return}
+      const file=new File([blob],`narration-${Date.now()}.${extensionForMime(type)}`,{type});
+      recordedFiles.set(key,file);setRecordedPreview(key,file);activeCapture=null;setStatus('録音できました。再生確認後、「音声を保存」を押してください。');
+    };
+    activeCapture={key,recorder,stream,timer};recorder.start(250);
+    const elements=captureElements(key);if(elements){elements.button.textContent='■ 録音停止';elements.button.classList.add('active');elements.state.textContent='録音中… 0.0秒'}
+  }catch(error){setStatus('マイクを開始できません: '+(error.message||error));activeCapture=null}
+}
+
+function setRecordedPreview(key,file){
+  const old=recordedUrls.get(key);if(old)URL.revokeObjectURL(old);
+  const url=URL.createObjectURL(file);recordedUrls.set(key,url);
+  const elements=captureElements(key);if(!elements)return;
+  elements.preview.src=url;elements.preview.hidden=false;elements.discard.hidden=false;elements.button.textContent='● 録り直す';elements.button.classList.remove('active');elements.state.textContent=`録音済み ${(file.size/1024).toFixed(0)} KB`;
+}
+function restoreCapturePreviews(){for(const [key,file] of recordedFiles)setRecordedPreview(key,file)}
+function discardCapture(kind,itemId){const key=captureKey(kind,itemId);recordedFiles.delete(key);const url=recordedUrls.get(key);if(url)URL.revokeObjectURL(url);recordedUrls.delete(key);const elements=captureElements(key);if(elements){elements.preview.removeAttribute('src');elements.preview.hidden=true;elements.discard.hidden=true;elements.button.textContent='● 録音開始';elements.state.textContent='録音を破棄しました。'}}
+function chosenFile(kind,itemId){const recorded=recordedFiles.get(captureKey(kind,itemId));if(recorded)return recorded;const selector=kind==='whole'?`.narration-file[data-id="${CSS.escape(itemId)}"]`:`.segment-file[data-id="${CSS.escape(itemId)}"]`;return document.querySelector(selector)?.files?.[0]||null}
+function mediaDuration(file){return new Promise(resolve=>{const audio=document.createElement('audio');const url=URL.createObjectURL(file);audio.preload='metadata';audio.onloadedmetadata=()=>{const duration=Number(audio.duration);URL.revokeObjectURL(url);resolve(Number.isFinite(duration)?duration:null)};audio.onerror=()=>{URL.revokeObjectURL(url);resolve(null)};audio.src=url})}
+
+async function load(){const name=projectName();if(!name){setStatus('プロジェクト名を入力してください。');return}setStatus('読み込み中…');try{const data=await requestJson('api/project/'+encodeURIComponent(name),{cache:'no-store'});timeline=data.timeline||[];render();setStatus(`${timeline.length}件の素材を読み込みました。`)}catch(error){setStatus('読み込み失敗: '+error.message)}}
+async function changeAudioMode(itemId,audioMode){const body=new FormData();body.append('project',projectName());body.append('item_id',itemId);body.append('audio_mode',audioMode);setStatus('音声モードを保存中…');try{const data=await requestJson('api/audio-mode',{method:'POST',body});timeline=data.timeline||timeline.map(item=>item.id===itemId?data.item:item);render();setStatus(`音声モードを「${audioLabels[audioMode]}」へ変更しました。`)}catch(error){setStatus('音声モード変更失敗: '+error.message);await load()}}
+
+async function uploadNarration(itemId){
+  const file=chosenFile('whole',itemId);if(!file){setStatus('録音するか、ナレーション音声を選んでください。');return}
+  const body=new FormData();body.append('project',projectName());body.append('item_id',itemId);body.append('transcript_hint','');body.append('media',file,file.name);setStatus(`素材全体のナレーションを保存中… ${(file.size/1024/1024).toFixed(1)} MB`);
+  try{await requestJson('api/narration',{method:'POST',body});discardCapture('whole',itemId);await load();setStatus('素材全体のナレーションを保存しました。')}catch(error){setStatus('ナレーション保存失敗: '+error.message)}
+}
+
+async function uploadSegment(itemId){
+  const startInput=document.querySelector(`.range-start[data-id="${CSS.escape(itemId)}"]`);const endInput=document.querySelector(`.range-end[data-id="${CSS.escape(itemId)}"]`);const start=Number(startInput?.value);const end=Number(endInput?.value);const file=chosenFile('segment',itemId);
+  if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start){setStatus('開始秒と終了秒を正しく入力してください。');return}
+  if(!file){setStatus('録音するか、範囲へ入れる音声を選んでください。');return}
+  const duration=await mediaDuration(file);const range=end-start;
+  if(duration!==null&&duration>range+0.25){setStatus(`音声が長すぎます。選択範囲 ${range.toFixed(1)}秒に対して、音声は ${duration.toFixed(1)}秒です。終了秒を延ばすか録り直してください。`);return}
+  if(duration!==null&&duration+0.75<range&&!confirm(`音声は ${duration.toFixed(1)}秒、選択範囲は ${range.toFixed(1)}秒です。残りは無音になります。このまま保存しますか？`))return;
+  const body=new FormData();body.append('project',projectName());body.append('item_id',itemId);body.append('start_seconds',String(start));body.append('end_seconds',String(end));body.append('transcript_hint','');body.append('media',file,file.name);setStatus(`${start.toFixed(1)}〜${end.toFixed(1)}秒へ音声を保存中…`);
+  try{const data=await requestJson('api/narration-segment',{method:'POST',body});discardCapture('segment',itemId);timeline=data.timeline||timeline;render();setStatus(`${start.toFixed(1)}〜${end.toFixed(1)}秒へ音声を差し込みました。`)}catch(error){setStatus('範囲ナレーション保存失敗: '+error.message)}
+}
+
+async function removeSegment(itemId,segmentId){if(!confirm('この範囲ナレーションを削除しますか？'))return;const body=new FormData();body.append('project',projectName());body.append('item_id',itemId);body.append('segment_id',segmentId);setStatus('範囲ナレーションを削除中…');try{const data=await requestJson('api/narration-segment',{method:'DELETE',body});timeline=data.timeline||timeline;render();setStatus('範囲ナレーションを削除しました。')}catch(error){setStatus('削除失敗: '+error.message)}}
+async function removeItem(itemId){const item=timeline.find(value=>value.id===itemId);const title=labels[item?.role]||item?.role||'この素材';if(!confirm(`${title}をタイムラインから削除しますか？\n\nファイルは .trash へ退避されます。`))return;const body=new FormData();body.append('project',projectName());body.append('item_id',itemId);setStatus('削除中…');try{const data=await requestJson('api/material',{method:'DELETE',body});timeline=data.timeline||[];render();setStatus('削除しました。元ファイルは .trash に退避されています。')}catch(error){setStatus('削除失敗: '+error.message)}}
+
+$('#load').onclick=load;
+const params=new URLSearchParams(location.search);if(params.get('project'))$('#project').value=params.get('project');
+window.addEventListener('beforeunload',()=>{if(activeCapture)activeCapture.stream.getTracks().forEach(track=>track.stop());for(const url of recordedUrls.values())URL.revokeObjectURL(url)});
+load();
+</script>
+</body>
+</html>
