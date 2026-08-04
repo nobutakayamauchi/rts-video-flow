@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>限界開発 Vlog 素材詳細</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:720px;margin:auto;padding:22px 15px 90px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}h1{font-size:1.55rem}.meta,.hint{color:var(--muted);line-height:1.6}video,img{width:100%;max-height:58vh;object-fit:contain;background:#000;border-radius:14px}button,a.button{width:100%;display:block;border:0;border-radius:12px;padding:14px;font:inherit;font-weight:900;text-align:center;text-decoration:none;margin-top:10px;background:var(--gold);color:#17120a}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:5px 9px;margin:3px;font-size:.8rem}.status{white-space:pre-wrap}.snackbar{display:none;position:fixed;left:14px;right:14px;bottom:20px;z-index:9;max-width:690px;margin:auto;background:#202b38;border:1px solid #4a6078;border-radius:14px;padding:14px}.snackbar.show{display:block}
+</style>
+</head>
+<body>
+<main class="wrap">
+<h1>素材詳細</h1>
+<p><a id="back" style="color:#ffc84a">構成へ戻る</a></p>
+<section class="panel">
+<div id="preview"></div>
+<h2 id="title">読み込み中…</h2>
+<p id="source" class="meta"></p>
+<div id="badges"></div>
+<p id="description"></p>
+<a id="audioEdit" class="button secondary">音声・範囲差し替えを編集</a>
+<button id="delete" class="danger">構成から削除</button>
+<p id="status" class="status"></p>
+</section>
+</main>
+<div id="snackbar" class="snackbar"><div id="snackbarText"></div><button id="undo" class="secondary">元に戻す</button></div>
+<script>
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('../',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
+const params=new URLSearchParams(location.search);
+const project=params.get('project')||'';
+const itemId=params.get('item')||'';
+const labels={opening:'オープニング',ending:'エンディング',screen:'画面収録',screenshot:'スクリーンショット',camera:'通常動画'};
+const audioLabels={source:'元音声',narration:'後付け音声',mute:'無音'};
+let item=null;let trashId='';let timer=null;
+function escapeHtml(value){return String(value??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}
+async function requestJson(path,options={}){const response=await fetch(apiUrl(path),options);const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text||`HTTP ${response.status}`}}if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);return data}
+function badge(text){return `<span class="badge">${escapeHtml(text)}</span>`}
+async function load(){
+  $('#back').href=`../?project=${encodeURIComponent(project)}`;
+  $('#audioEdit').href=`manage.html?project=${encodeURIComponent(project)}&item=${encodeURIComponent(itemId)}`;
+  if(!project||!itemId){$('#status').textContent='project または item がありません。';return}
+  try{
+    const data=await requestJson(`api/project/${encodeURIComponent(project)}`,{cache:'no-store'});
+    item=(data.timeline||[]).find(value=>String(value.id)===itemId);
+    if(!item)throw new Error('素材が見つかりません。');
+    $('#title').textContent=labels[item.role]||item.role||'素材';
+    $('#source').textContent=item.source||'';
+    $('#description').textContent=item.explanation||item.description||'説明はありません。';
+    const segments=Array.isArray(item.narrationSegments)?item.narrationSegments.length:0;
+    $('#badges').innerHTML=badge(audioLabels[item.audioMode]||item.audioMode||'音声未設定')+badge(`範囲音声 ${segments}件`)+badge(`字幕 ${item.subtitleMode||'auto'}`);
+    const source=apiUrl(`api/source/${encodeURIComponent(project)}/${encodeURIComponent(itemId)}`);
+    $('#preview').innerHTML=item.type==='image'?`<img src="${source}" alt="素材プレビュー">`:`<video src="${source}" controls playsinline></video>`;
+    $('#status').textContent='読み込み完了';
+  }catch(error){$('#status').textContent='読み込み失敗: '+error.message}
+}
+async function remove(){
+  if(!item||!confirm('この素材を構成から削除します。\n素材ファイルと付属音声はゴミ箱へ移動します。'))return;
+  const body=new FormData();body.append('project',project);body.append('item_id',itemId);
+  try{
+    const data=await requestJson('api/material',{method:'DELETE',body});trashId=data.trash?.trashId||'';
+    $('#snackbarText').textContent='素材をゴミ箱へ移動しました';$('#snackbar').classList.add('show');
+    clearTimeout(timer);timer=setTimeout(()=>$('#snackbar').classList.remove('show'),60000);
+    $('#status').textContent='削除しました。元に戻すか、構成画面へ戻ってください。';
+  }catch(error){$('#status').textContent='削除失敗: '+error.message}
+}
+async function undo(){
+  if(!trashId)return;
+  const body=new FormData();body.append('project',project);body.append('trash_id',trashId);body.append('conflict_policy','rename');
+  try{await requestJson('api/trash/restore',{method:'POST',body});$('#snackbar').classList.remove('show');trashId='';await load();$('#status').textContent='元に戻しました。完成動画は要再書き出しです。'}catch(error){$('#status').textContent='復元失敗: '+error.message}
+}
+$('#delete').onclick=remove;$('#undo').onclick=undo;load();
+</script>
+</body>
+</html>
