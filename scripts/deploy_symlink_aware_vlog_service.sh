@@ -14,7 +14,9 @@ fi
 for required in \
   "${PYTHON}" \
   "${FEATURE}/web_console/app_v4.py" \
-  "${FEATURE}/web_console/app_v3.py"; do
+  "${FEATURE}/web_console/app_v3.py" \
+  "${FEATURE}/web_console/static/new-vlog.html" \
+  "${FEATURE}/web_console/static/timed-narration.html"; do
   if [[ ! -e "${required}" ]]; then
     echo "Missing required path: ${required}" >&2
     exit 3
