@@ -17,11 +17,15 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from web_console import app as base
 from web_console import app_v3 as legacy
 from web_console.app import ROOT, STATIC_DIR
+
+CAMERA_AUDIO_RECOVERY_TAG = (
+    '<script src="./static/camera-audio-recovery.js?v=20260804b"></script>'
+)
 
 
 def safe_project_name(value: str) -> str:
@@ -103,8 +107,18 @@ async def redirect_static_wizard(request: Request, call_next):
 
 
 @app.get("/new", include_in_schema=False)
-def new_project_wizard() -> FileResponse:
-    return FileResponse(STATIC_DIR / "new-vlog.html")
+def new_project_wizard() -> HTMLResponse:
+    """Serve the wizard without caching and attach the iOS audio recovery shim."""
+    html = (STATIC_DIR / "new-vlog.html").read_text(encoding="utf-8")
+    if CAMERA_AUDIO_RECOVERY_TAG not in html:
+        html = html.replace("</body>", f"{CAMERA_AUDIO_RECOVERY_TAG}\n</body>")
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.post("/api/project")
