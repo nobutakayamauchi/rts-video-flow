@@ -24,7 +24,8 @@ async def inject_timed_narration_finish(request: Request, call_next):
         html = (STATIC_DIR / "timed-narration.html").read_text(encoding="utf-8")
         missing_tags = [tag for tag in TIMED_NARRATION_TAGS if tag not in html]
         if missing_tags:
-            html = html.replace("</body>", f"{'\n'.join(missing_tags)}\n</body>")
+            injected = "\n".join(missing_tags)
+            html = html.replace("</body>", f"{injected}\n</body>")
         return HTMLResponse(
             html,
             headers={
