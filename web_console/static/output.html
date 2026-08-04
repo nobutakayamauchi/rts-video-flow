@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>限界開発 Vlog 書き出し管理</title>
+<style>
+:root{--bg:#0b0f14;--panel:#151c25;--panel2:#101720;--line:#2b3848;--ink:#f7f7f7;--muted:#aeb9c5;--gold:#ffc84a;--red:#ff6b63;--blue:#253245;--green:#66d19e;--warn:#ffd479}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:760px;margin:auto;padding:22px 15px 110px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}h1{font-size:1.6rem}.lead,.hint,.meta{color:var(--muted);line-height:1.6}label{display:block;font-weight:800;margin:9px 0 6px}input,button,a.button{width:100%;font:inherit;border-radius:12px;padding:14px}input{background:#0d131b;color:#fff;border:1px solid #3a4b60}button,a.button{display:block;border:0;background:var(--gold);color:#17120a;font-weight:900;text-align:center;text-decoration:none;margin-top:9px}.secondary{background:var(--blue)!important;color:#fff!important}.danger{background:var(--red)!important;color:#210b09!important}.ghost{background:transparent!important;color:var(--ink)!important;border:1px solid var(--line)!important}.ok{color:var(--green)}.warning{color:var(--warn)}.status{white-space:pre-wrap;line-height:1.55}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.artifact{background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:12px;margin:9px 0}.artifact strong{color:var(--gold)}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:.75rem;margin:3px}.snackbar{display:none;position:fixed;left:14px;right:14px;bottom:18px;z-index:9;max-width:730px;margin:auto;background:#202b38;border:1px solid #4a6078;border-radius:14px;padding:14px}.snackbar.show{display:block}.empty{border:1px dashed var(--line);border-radius:12px;padding:16px;text-align:center;color:var(--muted)}@media(max-width:450px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<h1>書き出し・生成物</h1>
+<p class="lead">プレビュー／最終版の生成、生成済みカットの個別削除、生成物一式の削除と復元を行います。</p>
+<p><a id="back" style="color:#ffc84a">構成へ戻る</a>　<a id="trash" style="color:#ffc84a">ゴミ箱</a></p>
+<section class="panel">
+<label for="project">プロジェクト名</label>
+<input id="project" value="01-segment-smoke-v3">
+<button id="load">状態を読み込む</button>
+<p id="status" class="status">待機中</p>
+</section>
+
+<section class="panel">
+<h2>書き出し操作</h2>
+<div class="row">
+<button id="preview">プレビューを書き出す</button>
+<button id="final" class="secondary">最終版を書き出す</button>
+</div>
+</section>
+
+<section class="panel">
+<h2>完成動画</h2>
+<div id="finalInfo" class="empty">読み込み待ち</div>
+</section>
+
+<section class="panel">
+<h2>プレビュー</h2>
+<div id="previewInfo" class="empty">読み込み待ち</div>
+</section>
+
+<section class="panel">
+<h2>生成済みカット</h2>
+<div id="cuts" class="empty">読み込み待ち</div>
+</section>
+
+<section class="panel">
+<h2>生成物をすべて削除</h2>
+<p class="hint">元素材、録音、タイムライン、編集設定は残し、書き出し生成物だけをゴミ箱へ移動します。</p>
+<div id="inventory" class="meta"></div>
+<button id="deleteAll" class="danger">生成物をすべて削除</button>
+</section>
+</main>
+<div id="snackbar" class="snackbar"><div id="snackbarText"></div><button id="undo" class="secondary">元に戻す</button></div>
+<script>
+const $=selector=>document.querySelector(selector);
+const APP_ROOT=new URL('../',location.href);
+const apiUrl=path=>new URL(String(path).replace(/^\/+/,''),APP_ROOT).toString();
+let info=null;let trashId='';let timer=null;
+function projectName(){return $('#project').value.trim()}
+function escapeHtml(value){return String(value??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}
+function formatBytes(bytes){const value=Number(bytes||0);if(value<1024)return `${value} B`;if(value<1024**2)return `${(value/1024).toFixed(1)} KB`;if(value<1024**3)return `${(value/1024**2).toFixed(1)} MB`;return `${(value/1024**3).toFixed(2)} GB`}
+async function requestJson(path,options={}){let response;try{response=await fetch(apiUrl(path),options)}catch(error){throw new Error('通信失敗: '+error.message)}const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text.slice(0,1000)||`HTTP ${response.status}`}}if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);return data}
+function updateLinks(){const name=encodeURIComponent(projectName());$('#back').href=`../?project=${name}`;$('#trash').href=`trash.html?project=${name}`}
+function stateClass(state){return state==='CURRENT'?'ok':'warning'}
+function outputCard(output,kind){
+  if(!output?.exists)return '<div class="empty">まだ生成されていません。</div>';
+  const url=kind==='final'?apiUrl(`api/download/${encodeURIComponent(projectName())}`):apiUrl(`api/output-file/${encodeURIComponent(projectName())}/preview.mp4`);
+  return `<div class="artifact"><strong>${escapeHtml(output.name)}</strong><p class="${stateClass(output.state)}">${escapeHtml(output.state)}</p><p class="meta">${formatBytes(output.sizeBytes)}</p><a class="button secondary" href="${url}" target="_blank">動画を開く</a></div>`;
+}
+function render(){
+  $('#finalInfo').className='';$('#finalInfo').innerHTML=outputCard(info.final,'final');
+  $('#previewInfo').className='';$('#previewInfo').innerHTML=outputCard(info.preview,'preview');
+  const cuts=info.cuts||[];const box=$('#cuts');
+  if(!cuts.length){box.className='empty';box.textContent='生成済みカットはありません。'}else{
+    box.className='';box.innerHTML=cuts.map((cut,index)=>`<div class="artifact"><strong>カット ${index+1}</strong><p class="meta">${escapeHtml(cut.relativePath)}<br>${formatBytes(cut.sizeBytes)}</p><span class="badge">${escapeHtml(cut.state)}</span><button class="danger delete-cut" data-path="${escapeHtml(cut.relativePath)}">このカットの生成物だけ削除</button></div>`).join('');
+    box.querySelectorAll('.delete-cut').forEach(button=>button.onclick=()=>deleteCut(button.dataset.path));
+  }
+  $('#inventory').textContent=`生成物 ${info.artifactCount||0}件 / 合計 ${formatBytes(info.totalSizeBytes||0)}`;
+}
+async function load(){
+  const name=projectName();if(!name){$('#status').textContent='プロジェクト名を入力してください。';return}
+  updateLinks();$('#status').textContent='読み込み中…';
+  try{info=await requestJson(`api/output/${encodeURIComponent(name)}`,{cache:'no-store'});render();$('#status').textContent=`状態: ${info.state||'MISSING'}${info.reason?`\n${info.reason}`:''}`;}catch(error){$('#status').textContent='読み込み失敗: '+error.message}
+}
+async function renderOutput(mode){
+  const label=mode==='preview'?'プレビュー':'最終版';if(!confirm(`${label}を書き出します。自動公開は行いません。`))return;
+  const body=new FormData();body.append('project',projectName());body.append('mode',mode);
+  $('#status').textContent=`${label}を書き出しています。画面を閉じずにお待ちください…`;$('#preview').disabled=true;$('#final').disabled=true;
+  try{const data=await requestJson('api/output/render',{method:'POST',body});$('#status').textContent=`${label}が完成しました。\n${data.output||''}`;await load()}catch(error){$('#status').textContent=`${label}書き出し失敗:\n${error.message}`}finally{$('#preview').disabled=false;$('#final').disabled=false}
+}
+function showUndo(record,message){trashId=record?.trashId||'';if(!trashId)return;$('#snackbarText').textContent=message;$('#snackbar').classList.add('show');clearTimeout(timer);timer=setTimeout(()=>{$('#snackbar').classList.remove('show');trashId=''},60000)}
+async function deleteCut(relativePath){
+  if(!confirm('このカットの生成物だけを削除します。\n元素材と編集設定は残ります。完成動画は要再書き出しになります。'))return;
+  const body=new FormData();body.append('project',projectName());body.append('relative_path',relativePath);
+  try{const data=await requestJson('api/output/cut',{method:'DELETE',body});showUndo(data.trash,'カット生成物をゴミ箱へ移動しました');await load()}catch(error){$('#status').textContent='カット削除失敗: '+error.message}
+}
+async function deleteAll(){
+  if(!info||!info.artifactCount){$('#status').textContent='削除する生成物がありません。';return}
+  const message=`生成物をすべてゴミ箱へ移動します。\n\n対象: ${info.artifactCount}件\n容量: ${formatBytes(info.totalSizeBytes)}\n\n元素材、録音、編集設定は削除されません。`;
+  if(!confirm(message))return;
+  const body=new FormData();body.append('project',projectName());
+  try{const data=await requestJson('api/output/all',{method:'DELETE',body});if(data.trash)showUndo(data.trash,'書き出し生成物一式をゴミ箱へ移動しました');await load()}catch(error){$('#status').textContent='全生成物削除失敗: '+error.message}
+}
+async function undo(){
+  if(!trashId)return;const body=new FormData();body.append('project',projectName());body.append('trash_id',trashId);body.append('conflict_policy','rename');
+  try{await requestJson('api/trash/restore',{method:'POST',body});$('#snackbar').classList.remove('show');trashId='';await load();$('#status').textContent='生成物を復元しました。安全確認のため要再書き出し扱いです。'}catch(error){$('#status').textContent='復元失敗: '+error.message}
+}
+$('#load').onclick=load;$('#preview').onclick=()=>renderOutput('preview');$('#final').onclick=()=>renderOutput('final');$('#deleteAll').onclick=deleteAll;$('#undo').onclick=undo;$('#project').oninput=updateLinks;
+const params=new URLSearchParams(location.search);if(params.get('project'))$('#project').value=params.get('project');updateLinks();load();
+</script>
+</body>
+</html>
