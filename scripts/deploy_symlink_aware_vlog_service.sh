@@ -16,7 +16,8 @@ for required in \
   "${FEATURE}/web_console/app_v4.py" \
   "${FEATURE}/web_console/app_v3.py" \
   "${FEATURE}/web_console/static/new-vlog.html" \
-  "${FEATURE}/web_console/static/timed-narration.html"; do
+  "${FEATURE}/web_console/static/timed-narration.html" \
+  "${FEATURE}/scripts/apply_boundary_jump_cuts.py"; do
   if [[ ! -e "${required}" ]]; then
     echo "Missing required path: ${required}" >&2
     exit 3
