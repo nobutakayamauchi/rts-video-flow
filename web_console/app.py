@@ -19,6 +19,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 PROJECTS_DIR = ROOT / "projects"
 OUTPUT_DIR = ROOT / "output"
 ALLOWED_ROLES = {"opening", "ending", "camera", "screen", "screenshot"}
+AUDIO_MODES = {"source", "narration", "mute"}
+AUDIO_EXTENSIONS = {".m4a", ".wav", ".ogg", ".webm", ".mp4"}
 MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 
@@ -73,7 +75,7 @@ def plan_path(project_path: Path) -> Path:
 
 def default_plan(name: str) -> dict[str, Any]:
     return {
-        "version": 3,
+        "version": 4,
         "project": name,
         "policy": {
             "screenRecording": "short-demo-only",
@@ -99,9 +101,14 @@ def load_plan(project_path: Path) -> dict[str, Any]:
 
 def save_plan(project_path: Path, plan: dict[str, Any]) -> None:
     project_path.mkdir(parents=True, exist_ok=True)
+    plan["version"] = max(4, int(plan.get("version", 1)))
     plan_path(project_path).write_text(
         json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+
+
+def invalidate_output(project_path: Path) -> None:
+    shutil.rmtree(OUTPUT_DIR / project_path.name, ignore_errors=True)
 
 
 def target_folder(project_path: Path, role: str) -> Path:
@@ -155,23 +162,41 @@ def resolve_project_file(project_path: Path, relative_value: object) -> Path | N
     return target
 
 
+def move_path_to_trash(project_path: Path, target: Path) -> str | None:
+    if not target.is_file():
+        return None
+    trash_dir = project_path / ".trash" / timestamp()
+    trash_dir.mkdir(parents=True, exist_ok=True)
+    destination = trash_dir / target.name
+    counter = 1
+    while destination.exists():
+        destination = trash_dir / f"{target.stem}-{counter}{target.suffix}"
+        counter += 1
+    target.replace(destination)
+    return str(destination.relative_to(project_path))
+
+
 def move_item_files_to_trash(project_path: Path, item: dict[str, Any]) -> list[str]:
     """Soft-delete source and narration files so mistakes remain recoverable."""
-    trash_dir = project_path / ".trash" / timestamp()
     moved: list[str] = []
     for key in ("source", "narration"):
         target = resolve_project_file(project_path, item.get(key))
-        if target is None or not target.is_file():
+        if target is None:
             continue
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        destination = trash_dir / target.name
-        counter = 1
-        while destination.exists():
-            destination = trash_dir / f"{target.stem}-{counter}{target.suffix}"
-            counter += 1
-        target.replace(destination)
-        moved.append(str(destination.relative_to(project_path)))
+        destination = move_path_to_trash(project_path, target)
+        if destination:
+            moved.append(destination)
     return moved
+
+
+def find_item(plan: dict[str, Any], item_id: str) -> dict[str, Any]:
+    item = next(
+        (value for value in plan["timeline"] if value.get("id") == item_id),
+        None,
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Timeline item not found")
+    return item
 
 
 @app.get("/")
@@ -213,12 +238,16 @@ async def save_material(
     target = folder / f"{order:02d}-{role}-{timestamp()}{extension}"
     size_bytes = await stream_upload_to_disk(media, target)
 
+    asset_type = "image" if role == "screenshot" else "video"
+    audio_mode = "mute" if asset_type == "image" else "source"
     item: dict[str, Any] = {
         "id": f"item-{timestamp()}-{order}",
-        "type": "image" if role == "screenshot" else "video",
+        "type": asset_type,
         "source": str(target.relative_to(project_path)),
         "role": role,
         "sizeBytes": size_bytes,
+        "audioMode": audio_mode,
+        "subtitleMode": "none" if audio_mode == "mute" else "auto",
     }
     if description.strip():
         item["explanation"] = description.strip()
@@ -227,6 +256,7 @@ async def save_material(
 
     plan["timeline"].append(item)
     save_plan(project_path, plan)
+    invalidate_output(project_path)
     return {"status": "saved", "item": item, "timeline": plan["timeline"]}
 
 
@@ -247,7 +277,7 @@ def delete_material(
     item = plan["timeline"].pop(index)
     moved = move_item_files_to_trash(project_path, item)
     save_plan(project_path, plan)
-    shutil.rmtree(OUTPUT_DIR / project_path.name, ignore_errors=True)
+    invalidate_output(project_path)
     return {
         "status": "deleted",
         "item": item,
@@ -265,27 +295,64 @@ async def save_narration(
 ) -> dict[str, Any]:
     project_path = project_dir(project)
     plan = load_plan(project_path)
-    item = next(
-        (value for value in plan["timeline"] if value.get("id") == item_id), None
-    )
-    if not item:
-        raise HTTPException(status_code=404, detail="Timeline item not found")
-    if item.get("type") != "image":
-        raise HTTPException(
-            status_code=400,
-            detail="Narration recording is only supported for screenshots",
-        )
+    item = find_item(plan, item_id)
+
+    extension = extension_for(media.content_type, media.filename)
+    if extension not in AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported narration audio format")
 
     folder = project_path / "narration"
-    extension = extension_for(media.content_type, media.filename)
     target = folder / f"{item_id}-{timestamp()}{extension}"
     size_bytes = await stream_upload_to_disk(media, target)
+
+    old_narration = resolve_project_file(project_path, item.get("narration"))
+    moved_old = None
+    if old_narration is not None and old_narration != target:
+        moved_old = move_path_to_trash(project_path, old_narration)
+
     item["narration"] = str(target.relative_to(project_path))
     item["narrationSizeBytes"] = size_bytes
+    item["audioMode"] = "narration"
+    item["subtitleMode"] = "auto"
     if transcript_hint.strip():
         item["transcriptHint"] = transcript_hint.strip()
+    else:
+        item.pop("transcriptHint", None)
+
     save_plan(project_path, plan)
-    return {"status": "saved", "item": item}
+    invalidate_output(project_path)
+    return {
+        "status": "saved",
+        "item": item,
+        "replacedNarration": moved_old,
+    }
+
+
+@app.post("/api/audio-mode")
+def set_audio_mode(
+    project: str = Form(...),
+    item_id: str = Form(...),
+    audio_mode: str = Form(...),
+) -> dict[str, Any]:
+    project_path = project_dir(project)
+    plan = load_plan(project_path)
+    item = find_item(plan, item_id)
+
+    if audio_mode not in AUDIO_MODES:
+        raise HTTPException(status_code=400, detail="Unsupported audio mode")
+    if item.get("type") == "image" and audio_mode == "source":
+        raise HTTPException(status_code=400, detail="Images cannot use source audio")
+    if audio_mode == "narration" and not item.get("narration"):
+        raise HTTPException(
+            status_code=400,
+            detail="Narration audio must be uploaded before narration mode can be selected",
+        )
+
+    item["audioMode"] = audio_mode
+    item["subtitleMode"] = "none" if audio_mode == "mute" else "auto"
+    save_plan(project_path, plan)
+    invalidate_output(project_path)
+    return {"status": "saved", "item": item, "timeline": plan["timeline"]}
 
 
 @app.post("/api/reorder")
@@ -302,6 +369,7 @@ def reorder(
         )
     plan["timeline"] = [by_id[item_id] for item_id in ids]
     save_plan(project_path, plan)
+    invalidate_output(project_path)
     return {"status": "saved", "timeline": plan["timeline"]}
 
 
