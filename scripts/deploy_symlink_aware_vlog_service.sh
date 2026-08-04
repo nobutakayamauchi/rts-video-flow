@@ -13,11 +13,13 @@ fi
 
 for required in \
   "${PYTHON}" \
+  "${FEATURE}/web_console/app_v5.py" \
   "${FEATURE}/web_console/app_v4.py" \
   "${FEATURE}/web_console/app_v3.py" \
   "${FEATURE}/web_console/static/new-vlog.html" \
   "${FEATURE}/web_console/static/camera-audio-recovery.js" \
   "${FEATURE}/web_console/static/timed-narration.html" \
+  "${FEATURE}/web_console/static/timed-narration-finish.js" \
   "${FEATURE}/scripts/apply_boundary_jump_cuts.py" \
   "${FEATURE}/scripts/audit_high_frequency_audio.py"; do
   if [[ ! -e "${required}" ]]; then
@@ -38,7 +40,7 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/rts-video-flow-segment-test
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/ubuntu/rts-video-flow/venv/bin/python3 -m uvicorn web_console.app_v4:app --host 127.0.0.1 --port 8000
+ExecStart=/home/ubuntu/rts-video-flow/venv/bin/python3 -m uvicorn web_console.app_v5:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
