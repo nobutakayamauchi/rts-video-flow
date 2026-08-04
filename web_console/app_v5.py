@@ -9,9 +9,10 @@ from web_console.app import STATIC_DIR
 from web_console.app_v4 import app
 
 TIMED_NARRATION_TAGS = (
-    '<script src="timed-narration-finish.js?v=20260804a"></script>',
-    '<script src="timed-narration-recording-overlay.js?v=20260804a"></script>',
-    '<script src="timed-narration-return-fix.js?v=20260804a"></script>',
+    '<script src="timed-narration-finish.js?v=20260805a"></script>',
+    '<script src="timed-narration-recording-overlay.js?v=20260805a"></script>',
+    '<script src="timed-narration-visibility-fix.js?v=20260805a"></script>',
+    '<script src="timed-narration-return-fix.js?v=20260805a"></script>',
 )
 
 
