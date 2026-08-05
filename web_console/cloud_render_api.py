@@ -17,6 +17,7 @@ from web_console.cloud_render_handoff import (
     normalize_hashes,
 )
 from web_console.cloud_render_project import prepare_project
+from web_console.cloud_render_reconcile import reconcile_active_record
 
 router = APIRouter(prefix="/api/cloud-render", tags=["cloud-render-handoff"])
 STORE_ROOT = ROOT / "state" / "cloud-render-handoff"
@@ -146,8 +147,10 @@ def dispatch_cloud_render(request_id: str = Form(...)) -> dict[str, Any]:
 
 @router.get("/status/{request_id}")
 def cloud_render_status(request_id: str) -> dict[str, Any]:
+    store = handoff_store()
     try:
-        record = handoff_store().read(request_id)
+        record = store.read(request_id)
+        record = reconcile_active_record(store, record)
     except HandoffError as error:
         detail = str(error)
         status = 404 if detail == "render request not found" else 409
