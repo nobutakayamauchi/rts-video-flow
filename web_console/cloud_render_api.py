@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException
@@ -17,6 +16,7 @@ from web_console.cloud_render_handoff import (
     SecurityBinding,
     normalize_hashes,
 )
+from web_console.cloud_render_project import prepare_project
 
 router = APIRouter(prefix="/api/cloud-render", tags=["cloud-render-handoff"])
 STORE_ROOT = ROOT / "state" / "cloud-render-handoff"
@@ -40,7 +40,6 @@ def _parse_hashes(raw: str) -> tuple[str, ...]:
 
 
 def _public_record(record: dict[str, Any]) -> dict[str, Any]:
-    """Return UI-safe state without weakening integrity-bound fields."""
     return {
         "request_id": record["request_id"],
         "status": record["status"],
@@ -74,7 +73,6 @@ def prepare_cloud_render(
     input_hashes: str = Form(...),
     files: int = Form(..., ge=1),
 ) -> dict[str, Any]:
-    """Persist a validated request awaiting explicit single-use approval."""
     try:
         hashes = _parse_hashes(input_hashes)
         security = SecurityBinding(
@@ -96,12 +94,32 @@ def prepare_cloud_render(
     return _public_record(record)
 
 
+@router.post("/prepare-project", status_code=201)
+def prepare_cloud_render_project(
+    project: str = Form(...),
+    mode: str = Form("preview"),
+) -> dict[str, Any]:
+    """Inspect project sources, upload bounded inputs, and create approval state.
+
+    This endpoint does not consume approval and does not start Cloud Run.
+    """
+    try:
+        prepared = prepare_project(handoff_store(), project, mode)
+    except HandoffError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    response = _public_record(prepared.record)
+    response["staging"] = str(prepared.staging_dir)
+    response["manifest_uri"] = prepared.record["manifest_uri"]
+    return response
+
+
 @router.post("/approve")
 def approve_cloud_render(
     request_id: str = Form(...),
     confirmation: str = Form(...),
 ) -> dict[str, Any]:
-    """Consume approval exactly once and move the request to QUEUED."""
     try:
         record = handoff_store().consume(request_id, confirmation=confirmation)
     except HandoffError as error:
@@ -113,7 +131,6 @@ def approve_cloud_render(
 
 @router.post("/dispatch")
 def dispatch_cloud_render(request_id: str = Form(...)) -> dict[str, Any]:
-    """Submit a previously approved QUEUED request to Cloud Run exactly once."""
     store = handoff_store()
     try:
         result = dispatch(store, request_id)
@@ -129,7 +146,6 @@ def dispatch_cloud_render(request_id: str = Form(...)) -> dict[str, Any]:
 
 @router.get("/status/{request_id}")
 def cloud_render_status(request_id: str) -> dict[str, Any]:
-    """Read the integrity-checked durable status of a handoff request."""
     try:
         record = handoff_store().read(request_id)
     except HandoffError as error:
