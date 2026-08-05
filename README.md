@@ -14,6 +14,7 @@ Google Cloudは通常基盤ではありません。
 
 - 自動では切り替えない
 - 毎回Security Gateを通す
+- Cost Gate直前に元ファイルを再読込し、サイズとSHA-256を再検証する
 - 毎回料金と影響を表示する
 - 毎回1回限りの明示承認を取る
 - 同時実行1、再試行なしを基本とする
@@ -25,6 +26,7 @@ Google Cloudは通常基盤ではありません。
 
 ```text
 Security Gate
+→ Local Hash Revalidation
 → Cost / Consequence Gate
 → Explicit Single-Use Approval
 → Scoped Execution
@@ -111,9 +113,34 @@ python3 scripts/cloud_cost_gate.py \
   --estimated-max-yen <上限額>
 ```
 
+Cost GateはSecurity Passの期限、ポリシー、合計サイズを確認したうえで、各ローカル素材を再読込します。
+
+- 元ファイル消失を拒否
+- symlinkへの差し替えを拒否
+- サイズ変更を拒否
+- 同サイズの内容差し替えをSHA-256不一致で拒否
+
+正常時は`local_hash_revalidated: true`を表示します。
+
 `--approve`なしでは承認ファイルを発行しません。`--approve`付きでも、最後に`YES`を手入力しない限り止まります。
 
 承認はSecurity fingerprint、入力ハッシュ、プロジェクト、リージョン、バケット、Job、CPU、メモリ、時間、タスク数、料金上限へ固定されます。
+
+## ローカル安全経路の検証状況
+
+Oracle上で合成テスト動画と拒否用サンプルを使い、次を確認済みです。
+
+- 正常な1秒MP4からSecurity Passを生成
+- 危険なファイル名を拒否
+- allowlist外拡張子を拒否
+- 壊れたMP4を拒否
+- サイズ不一致、期限切れ、不正ポリシーを拒否
+- 元ファイル消失、symlink、サイズ変更を拒否
+- 同サイズの内容差し替えをSHA-256で拒否
+- 実ファイル再ハッシュ後、承認手前で安全停止
+- Security Gate＋Cost Gateの自動テスト：`14 passed`
+
+この検証ではCloud Build、Cloud Run、GCS実行、課金処理は行っていません。
 
 ## Cloud Run worker
 
@@ -183,6 +210,7 @@ output/vlog-001/
 - Remotionで動画を書き出す
 - 公開前のプライバシー確認表を生成する
 - Security GateとCost Gateを通した非常用Cloud Run Jobを準備する
+- 課金前に元ファイルの同一性をローカルで再確認する
 
 ## 運用方針
 
@@ -194,20 +222,23 @@ output/vlog-001/
 - 自動投稿はせず、人間の公開前確認を残す
 - 未検査素材をクラウド実行環境へ渡さない
 - 課金・外部処理は毎回の明示承認なしに動かさない
+- Build承認とRender承認を分離し、片方の承認をもう片方へ流用しない
 
 ## 仕様
 
 - [Vlog MVP仕様書](docs/VLOG_MVP_SPEC.md)
 - [後入れ音声仕様](docs/SCREENSHOT_NARRATION_SPEC.md)
 - [Security / Cost / Approval Flow](docs/SECURITY_COST_APPROVAL_FLOW.md)
+- [Cloud Render Cost Gate v1](docs/specs/VLOG_CLOUD_RENDER_COST_GATE_V1.md)
+- [Current Status](docs/STATUS.md)
 
 ## 次の確認
 
-1. Security GateとCost Gateの全ローカルテストを通す
-2. 小さな正常動画で`SECURITY_PASS`を生成する
-3. 危険な名前、異常stream、hash差し替えを拒否する
-4. 新しいworker imageを、改めて上限額を確認して1回だけbuildする
-5. Cloud Run Jobを新imageへ更新するが実行しない
-6. 最小素材1件について、上限額と影響を表示し、明示承認後に1回だけ実行する
-7. 出力、ログ、実時間、実費、一時ファイル削除を確認する
-8. 実行結果を基準に仕様書、状態、変更履歴を最終置換する
+1. Security Gate入りの新しいworker imageについて、タグ、buildコマンド、料金上限を表示する
+2. Cloud Buildを1回だけ行う明示承認を取る
+3. 新imageを確認し、Cloud Run Jobの参照imageだけ更新する
+4. Jobを実行せず設定を確認する
+5. 合成素材1件を隔離GCS領域へ準備する
+6. 別途、最小renderの料金上限と影響を表示し、1回限りの承認を取る
+7. 出力、ログ、SHA-256、実時間、実費、承認消費、重複実行拒否、一時ファイル削除を確認する
+8. 実行結果を基準に仕様書、状態、変更履歴を最終更新する
