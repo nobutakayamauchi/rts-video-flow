@@ -40,26 +40,41 @@ def test_compose_controller_prevents_duplicate_taps_and_polls_status() -> None:
 def test_compose_controller_reports_acceptance_and_progress_in_overlay() -> None:
     assert "window.RTSProgressOverlay" in CONTROLLER
     assert "✓ 受け付けました" in CONTROLLER
-    assert "通常は約1分かかります" in CONTROLLER
     assert "progress()?.update" in CONTROLLER
     assert "progress()?.finish" in CONTROLLER
     assert "progress()?.fail" in CONTROLLER
 
 
-def test_shared_overlay_is_fixed_following_and_detects_stalls() -> None:
+def test_compose_controller_reconnects_transport_failures_without_unlocking_duplicate_render() -> None:
+    assert "function isConnectionError" in CONTROLLER
+    assert "function scheduleReconnect" in CONTROLLER
+    assert "state: 'reconnecting'" in CONTROLLER
+    assert "今すぐ再接続" in CONTROLLER
+    assert "pollTimer = window.setTimeout(() => pollStatus" in CONTROLLER
+    assert "画面操作やタブ移動は可能です" in CONTROLLER
+    assert "function renderButtons()" in CONTROLLER
+    render_buttons = CONTROLLER[CONTROLLER.index("function renderButtons()") : CONTROLLER.index("function setBusy", CONTROLLER.index("function renderButtons()"))]
+    assert "#apply" not in render_buttons
+
+
+def test_shared_overlay_is_fixed_following_nonblocking_and_detects_stalls() -> None:
     assert "position: fixed" in OVERLAY
     assert "env(safe-area-inset-bottom)" in OVERLAY
     assert "aria-live" in OVERLAY
+    assert ".rts-progress-overlay.visible" in OVERLAY
+    assert "pointer-events: none" in OVERLAY
+    assert ".rts-progress-action" in OVERLAY
+    assert "pointer-events: auto" in OVERLAY
     assert "silentFor >= 30000" in OVERLAY
     assert "silentFor >= 120000" in OVERLAY
     assert "elapsed.textContent" in OVERLAY
     assert "updated.textContent" in OVERLAY
-    assert "window.RTSProgressOverlay = {show, update, finish, fail}" in OVERLAY
+    assert "window.RTSProgressOverlay = {show, update, finish, fail, setAction}" in OVERLAY
 
 
 def test_app_v5_injects_overlay_before_governed_compose_controller() -> None:
-    overlay = APP_V5.index('rts-progress-overlay.js?v=20260805a')
-    controller = APP_V5.index('compose-cloud-render.js?v=20260805e')
+    overlay = APP_V5.index('rts-progress-overlay.js?v=20260805b')
+    controller = APP_V5.index('compose-cloud-render.js?v=20260805f')
     assert overlay < controller
     assert "compose-controls-recovery|compose-cloud-render|rts-progress-overlay" in APP_V5
     assert 'COMPOSE_CONTROL_TAGS = ""' not in APP_V5
