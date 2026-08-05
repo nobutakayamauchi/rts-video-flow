@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Prepare one Vlog project for governed Cloud Run rendering.
 
-This module performs bounded local inspection and GCS upload only. It never
-consumes approval and never starts Cloud Run. The returned handoff remains in
-AWAITING_APPROVAL until the separate approval endpoint is called.
+This module performs bounded local inspection, input normalization, and GCS
+upload only. It never consumes approval and never starts Cloud Run. The
+returned handoff remains in AWAITING_APPROVAL until the separate approval
+endpoint is called.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from web_console.app_v3 import ensure_required_roles, require_project_path
 from web_console.cloud_render_handoff import HandoffError, HandoffStore, RenderPolicy, SecurityBinding
 
 STAGING_ROOT = ROOT / "state" / "cloud-render-staging"
+ALLOWED_INPUT_STREAMS = {"video", "audio"}
 
 
 @dataclass(frozen=True)
@@ -54,16 +56,161 @@ def collect_timeline_sources(project_name: str) -> tuple[Path, list[Path]]:
     return project_path, sources
 
 
-def stage_ascii_inputs(project_name: str, sources: list[Path], run_id: str) -> tuple[Path, list[Path]]:
+def inspect_streams(
+    source: Path,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> list[dict[str, Any]]:
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=index,codec_type,codec_name",
+        "-of",
+        "json",
+        str(source),
+    ]
+    try:
+        result = runner(command, check=True, capture_output=True, text=True, timeout=60)
+        payload = json.loads(result.stdout or "{}")
+    except subprocess.TimeoutExpired as error:
+        raise HandoffError(f"media inspection timed out: {source.name}") from error
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or error.stdout or "ffprobe failed").strip()
+        raise HandoffError(f"media inspection failed for {source.name}: {detail[-1000:]}") from error
+    except (json.JSONDecodeError, TypeError) as error:
+        raise HandoffError(f"invalid ffprobe response for {source.name}") from error
+    streams = payload.get("streams")
+    if not isinstance(streams, list):
+        raise HandoffError(f"media inspection returned no stream list: {source.name}")
+    return [stream for stream in streams if isinstance(stream, dict)]
+
+
+def _stream_summary(streams: list[dict[str, Any]]) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for stream in streams:
+        kind = str(stream.get("codec_type") or "unknown")
+        summary[kind] = summary.get(kind, 0) + 1
+    return summary
+
+
+def normalize_cloud_input(
+    source: Path,
+    target: Path,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> dict[str, Any]:
+    """Create one governed staging copy without mutating the source.
+
+    Inputs already containing exactly one video stream, at most one audio
+    stream, and no auxiliary stream are copied byte-for-byte. Other supported
+    inputs are remuxed to MP4 while selecting only the first video and optional
+    first audio stream. Re-encoding is never performed implicitly.
+    """
+
+    before = inspect_streams(source, runner=runner)
+    before_summary = _stream_summary(before)
+    video_count = before_summary.get("video", 0)
+    audio_count = before_summary.get("audio", 0)
+    unsupported = sorted(set(before_summary) - ALLOWED_INPUT_STREAMS)
+
+    if video_count != 1:
+        raise HandoffError(f"cloud input must contain exactly one video stream: {source.name}")
+
+    passthrough = audio_count <= 1 and not unsupported and len(before) <= 2
+    if passthrough:
+        target = target.with_suffix(source.suffix.lower() or ".mp4")
+        shutil.copy2(source, target)
+        method = "passthrough"
+    else:
+        target = target.with_suffix(".mp4")
+        command = [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            "-c",
+            "copy",
+            "-map_metadata",
+            "-1",
+            "-map_chapters",
+            "-1",
+            "-movflags",
+            "+faststart",
+            str(target),
+        ]
+        try:
+            runner(command, check=True, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired as error:
+            target.unlink(missing_ok=True)
+            raise HandoffError(f"cloud input normalization timed out: {source.name}") from error
+        except subprocess.CalledProcessError as error:
+            target.unlink(missing_ok=True)
+            detail = (error.stderr or error.stdout or "ffmpeg remux failed").strip()
+            raise HandoffError(f"cloud input normalization failed for {source.name}: {detail[-1500:]}") from error
+        method = "remux"
+
+    after = inspect_streams(target, runner=runner)
+    after_summary = _stream_summary(after)
+    if after_summary.get("video", 0) != 1:
+        target.unlink(missing_ok=True)
+        raise HandoffError(f"normalized input does not contain exactly one video stream: {source.name}")
+    if after_summary.get("audio", 0) > 1:
+        target.unlink(missing_ok=True)
+        raise HandoffError(f"normalized input contains more than one audio stream: {source.name}")
+    forbidden_after = sorted(set(after_summary) - ALLOWED_INPUT_STREAMS)
+    if forbidden_after:
+        target.unlink(missing_ok=True)
+        raise HandoffError(
+            f"normalized input still contains forbidden streams ({', '.join(forbidden_after)}): {source.name}"
+        )
+
+    return {
+        "source": str(source),
+        "staged": str(target),
+        "method": method,
+        "before": before_summary,
+        "after": after_summary,
+        "removed_streams": max(0, len(before) - len(after)),
+    }
+
+
+def stage_ascii_inputs(
+    project_name: str,
+    sources: list[Path],
+    run_id: str,
+    *,
+    media_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> tuple[Path, list[Path]]:
     stage = STAGING_ROOT / safe_project_name(project_name) / run_id
     inputs_dir = stage / "inputs"
     inputs_dir.mkdir(parents=True, exist_ok=False)
     staged: list[Path] = []
-    for index, source in enumerate(sources, start=1):
-        target = inputs_dir / f"input-{index:03d}{source.suffix.lower()}"
-        shutil.copy2(source, target)
-        staged.append(target)
-    return stage, staged
+    report: list[dict[str, Any]] = []
+    try:
+        for index, source in enumerate(sources, start=1):
+            base_target = inputs_dir / f"input-{index:03d}"
+            item = normalize_cloud_input(source, base_target, runner=media_runner)
+            target = Path(str(item["staged"]))
+            staged.append(target)
+            report.append(item)
+        (stage / "NORMALIZATION_REPORT.json").write_text(
+            json.dumps({"version": 1, "inputs": report}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return stage, staged
+    except Exception:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
 
 
 def _run(command: list[str], *, runner: Callable[..., subprocess.CompletedProcess[str]]) -> None:
@@ -82,23 +229,21 @@ def prepare_project(
     mode: str,
     *,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    media_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     now: int | None = None,
 ) -> PreparedProject:
     policy = RenderPolicy()
     current = int(time.time() if now is None else now)
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(current)) + f"-{safe_project_name(project_name)}"
     _, sources = collect_timeline_sources(project_name)
-    stage, staged = stage_ascii_inputs(project_name, sources, run_id)
+    stage, staged = stage_ascii_inputs(project_name, sources, run_id, media_runner=media_runner)
 
     try:
         security_pass = create_security_pass(staged)
         files = security_pass.get("files") or []
         hashes = tuple(str(item["sha256"]) for item in files)
         fingerprint = str(security_pass["security_fingerprint"])
-        input_uris = [
-            f"gs://{policy.bucket}/inputs/{run_id}/{path.name}"
-            for path in staged
-        ]
+        input_uris = [f"gs://{policy.bucket}/inputs/{run_id}/{path.name}" for path in staged]
         manifest_uri = f"gs://{policy.bucket}/manifests/{run_id}.json"
         output_uri = f"gs://{policy.bucket}/outputs/{run_id}/output.mp4"
 
