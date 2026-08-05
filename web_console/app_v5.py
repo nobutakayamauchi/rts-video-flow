@@ -23,8 +23,8 @@ TIMED_NARRATION_SCRIPT_RE = re.compile(
     flags=re.IGNORECASE,
 )
 COMPOSE_CONTROL_TAGS = (
-    '<script src="static/rts-progress-overlay.js?v=20260805a"></script>',
-    '<script src="static/compose-cloud-render.js?v=20260805e"></script>',
+    '<script src="static/rts-progress-overlay.js?v=20260805b"></script>',
+    '<script src="static/compose-cloud-render.js?v=20260805f"></script>',
 )
 COMPOSE_CONTROL_RE = re.compile(
     r'<script\s+src=["\'](?:static/)?(?:compose-controls-recovery|compose-cloud-render|rts-progress-overlay)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
