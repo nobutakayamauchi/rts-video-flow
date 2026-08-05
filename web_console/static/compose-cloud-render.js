@@ -1,13 +1,11 @@
 (() => {
-  const previewButton = document.querySelector('#preview');
-  const finalButton = document.querySelector('#final');
-  const applyButton = document.querySelector('#apply');
   const statusBox = document.querySelector('#status');
-  if (!previewButton || !finalButton || !applyButton || !statusBox) return;
+  if (!statusBox) return;
 
   let busy = false;
   let pollTimer = 0;
-  let lastTouchAt = 0;
+  let lastActivationAt = 0;
+  let lastActivationId = '';
 
   const apiUrlFor = path => {
     if (typeof apiUrl === 'function') return apiUrl(path);
@@ -35,11 +33,13 @@
     return data;
   }
 
+  function buttons() {
+    return [document.querySelector('#preview'), document.querySelector('#final'), document.querySelector('#apply')].filter(Boolean);
+  }
+
   function setBusy(value) {
     busy = value;
-    previewButton.disabled = value;
-    finalButton.disabled = value;
-    applyButton.disabled = value;
+    buttons().forEach(button => { button.disabled = value; });
   }
 
   function form(fields) {
@@ -90,7 +90,7 @@
     }
 
     setBusy(true);
-    setLocalStatus(`${label}の素材を安全確認し、クラウド投入準備をしています…`);
+    setLocalStatus(`${label}のタップを受け付けました。素材を安全確認し、クラウド投入準備をしています…`);
     try {
       const prepared = await request('api/cloud-render/prepare-project', {
         method: 'POST',
@@ -131,23 +131,25 @@
     }
   }
 
-  function bind(button, mode) {
-    const handler = event => {
-      if (event.type === 'touchend') lastTouchAt = Date.now();
-      if (event.type === 'click' && Date.now() - lastTouchAt < 800) return;
+  function delegatedActivation(event) {
+    const target = event.target instanceof Element ? event.target.closest('#preview, #final') : null;
+    if (!target) return;
+    const now = Date.now();
+    if (lastActivationId === target.id && now - lastActivationAt < 900) {
       event.preventDefault();
-      event.stopPropagation();
       event.stopImmediatePropagation();
-      cloudRender(mode);
-    };
-    button.style.touchAction = 'manipulation';
-    button.addEventListener('touchend', handler, {capture: true, passive: false});
-    button.addEventListener('click', handler, true);
+      return;
+    }
+    lastActivationId = target.id;
+    lastActivationAt = now;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    cloudRender(target.id === 'preview' ? 'preview' : 'final');
   }
 
-  bind(previewButton, 'preview');
-  bind(finalButton, 'final');
-
-  document.documentElement.dataset.cloudRenderController = 'ready';
+  document.addEventListener('pointerup', delegatedActivation, true);
+  document.addEventListener('touchend', delegatedActivation, {capture: true, passive: false});
+  document.addEventListener('click', delegatedActivation, true);
+  window.__rtsCloudRenderReady = true;
   window.addEventListener('pagehide', stopPolling);
 })();
