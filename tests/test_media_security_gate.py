@@ -60,12 +60,20 @@ def test_unsafe_filename_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_cost_gate_requires_matching_security_size(tmp_path: Path) -> None:
+    media = tmp_path / "input-001.mp4"
+    media.write_bytes(b"0123456789")
     security_pass = {
         "status": "PASS",
         "policy": "rts-media-security-gate-v1",
         "inspected_at": int(time.time()),
         "security_fingerprint": "a" * 64,
-        "files": [{"sha256": "b" * 64, "size_bytes": 10}],
+        "files": [
+            {
+                "path": str(media),
+                "sha256": cost.sha256_file(media),
+                "size_bytes": media.stat().st_size,
+            }
+        ],
     }
     path = tmp_path / "security-pass.json"
     path.write_text(json.dumps(security_pass), encoding="utf-8")
