@@ -1,80 +1,77 @@
 # rts-video-flow Next Actions
 
-The next goal is freeze review, not expansion.
+The next goal is to validate the Security → Cost → Approval path before any further paid or cloud execution.
 
-## Next Tasks
+## Required order
 
-1. Confirm which files are scaffold, prototype code, generated media, or temporary artifacts.
-2. Classify each material as ready, draft, stale, duplicate, risky, move, or archive.
-3. Confirm that no credentials, private links, customer media, or copyrighted source media are present.
-4. Confirm that no automatic upload, publishing, platform automation, or unattended service behavior is present.
-5. Confirm that generated subtitles and rendered outputs are treated as local review artifacts.
-6. Decide whether the repository should remain frozen, be archived, or receive a narrow video-workflow update.
+1. Pull the latest `feat/narration-segments-v1` branch on Oracle.
+2. Run all free local unit tests.
+3. Generate a tiny safe media sample locally.
+4. Generate deliberately rejected samples without using customer or private media.
+5. Verify `scripts/media_security_gate.py` produces a hash-bound SECURITY_PASS only for the safe sample.
+6. Verify unsafe filenames, unsupported types, extra streams, limits, timeouts, and hash replacement fail closed.
+7. Verify `scripts/cloud_cost_gate.py` refuses missing, expired, changed, and size-mismatched passes.
+8. Review all changed specifications and tests.
+9. Before Cloud Build, display the exact build target, execution count, timeout, automatic retry setting, and monetary ceiling.
+10. Obtain explicit one-shot approval.
+11. Build and push the secured image once; do not automatically retry.
+12. Verify the image exists.
+13. Update the Cloud Run Job to the new image without executing it.
+14. Prepare the smallest test manifest and isolated GCS objects.
+15. Recalculate the render ceiling and consequences.
+16. Obtain a separate explicit one-shot approval for the Cloud Run execution.
+17. Execute once.
+18. Verify output object, input/output hashes, logs, duration, actual cost, and cleanup.
+19. Mark the approval consumed and verify duplicate execution is rejected.
+20. Update README, STATUS, architecture, operating procedure, troubleshooting, and change history from observed results.
 
-## Suggested Follow-up Files
+## Free local validation command
 
-```text
-docs/inventory/video_flow_inventory.md
-docs/contracts/media_review_contract.md
-docs/governance/publishing_boundary.md
+```bash
+python3 -m pytest -q tests/test_cloud_cost_gate.py tests/test_media_security_gate.py
 ```
 
-## Inventory Categories
+This command must not call Cloud Build, Cloud Run, GCS transfer, or another paid external service.
 
-Use these labels during the next pass:
+## Stop conditions
 
-- READY: safe as local workflow documentation or reviewed prototype material
-- DRAFT: useful but incomplete
-- STALE: likely outdated or superseded
-- DUPLICATE: overlaps another script, template, or workflow note
-- RISKY: media rights, privacy, upload, platform automation, or unattended execution risk needs review
-- MOVE: belongs in another repository
-- ARCHIVE: preserve for history only
+Stop and report instead of continuing if:
 
-## Video Review Checklist
+- any Security Gate test fails
+- the Security Pass can be reused after the input changes
+- Cost Gate can run without a current Security Pass
+- a changed hash can reach the worker
+- a bucket or prefix outside the allowlist is accepted
+- a paid action appears without a current explicit approval
+- automatic retry, parallelism above one, or automatic fallback is enabled
+- the monetary ceiling cannot be stated with adequate confidence
+- secrets or real/private media would be required
 
-Each video workflow item should explicitly describe:
-
-- name
-- path
-- material type
-- purpose
-- status label
-- input expectations
-- output expectations
-- rights or privacy risk
-- upload or publishing risk
-- runtime or automation risk
-- next smallest safe action
-
-If an item implies automatic publishing, platform automation, unattended execution, sensitive media, or public use of unreviewed assets, mark it as `RISKY` and do not expand it until reviewed.
-
-## Do Not Do Yet
+## Do not do yet
 
 Do not:
 
-- add automatic upload or publishing behavior
-- add platform automation
-- add credentials, API keys, tokens, secrets, or private links
-- add customer or private video material
-- add copyrighted source media
-- add background processing services
-- add unattended execution workflows
-- rewrite all scripts at once
+- execute the current `cost-gated-v1` Job image
+- upload real user media
+- create recurring Jobs or schedules
+- enable automatic retry
+- broaden Storage permissions
+- add public bucket access
+- add automatic publication or upload
+- claim the secured overflow renderer is complete
 
-## Next Recommended Task
+## Documentation propagation after success
 
-Create `docs/inventory/video_flow_inventory.md` only if this repository is intentionally reviewed again.
+After the real secured execution succeeds, update and reconcile:
 
-That file should list each known video workflow material with:
+- `README.md`
+- `AGENTS.md`
+- `docs/STATUS.md`
+- `docs/NEXT.md`
+- `docs/VLOG_MVP_SPEC.md`
+- `docs/SECURITY_COST_APPROVAL_FLOW.md`
+- deployment and troubleshooting docs
+- the limit-development public documentation
+- RTS decision/boundary records or proposals
 
-1. name
-2. path
-3. material type
-4. status label
-5. input expectations
-6. output expectations
-7. rights or privacy risk
-8. upload or publishing risk
-9. runtime or automation risk
-10. next smallest safe action
+Old Oracle-only assumptions should be replaced where false. Historical incident details should move to decision/change history rather than remain as active instructions.
