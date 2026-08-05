@@ -22,7 +22,7 @@ TIMED_NARRATION_SCRIPT_RE = re.compile(
     r'<script\s+src=["\']timed-narration-(?:finish|recording-overlay|visibility-fix|return-fix)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
 )
-COMPOSE_CONTROL_TAG = '<script src="static/compose-cloud-render.js?v=20260805b"></script>'
+COMPOSE_CONTROL_TAG = '<script src="static/compose-cloud-render.js?v=20260805c"></script>'
 COMPOSE_CONTROL_RE = re.compile(
     r'<script\s+src=["\'](?:static/)?(?:compose-controls-recovery|compose-cloud-render)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
@@ -49,8 +49,6 @@ async def inject_mobile_interaction_controllers(request: Request, call_next):
     """Serve mobile editors uncached with one canonical controller set."""
     if request.method == "GET" and request.url.path == "/static/timed-narration.html":
         html = (STATIC_DIR / "timed-narration.html").read_text(encoding="utf-8")
-        # Remove stale or duplicate controller tags before injecting the current
-        # set. iPhone Safari previously mixed old and new handlers after deploys.
         html = TIMED_NARRATION_SCRIPT_RE.sub("", html)
         injected = "\n".join(TIMED_NARRATION_TAGS)
         html = html.replace("</body>", f"{injected}\n</body>")
