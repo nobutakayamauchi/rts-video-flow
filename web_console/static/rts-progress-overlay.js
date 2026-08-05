@@ -26,11 +26,12 @@
     .rts-progress-overlay.visible {
       transform: translateY(0);
       opacity: 1;
-      pointer-events: auto;
+      pointer-events: none;
     }
     .rts-progress-overlay[data-state="failed"] { border: 1px solid rgba(255, 100, 100, .72); }
     .rts-progress-overlay[data-state="completed"] { border: 1px solid rgba(98, 220, 140, .72); }
-    .rts-progress-overlay[data-state="stalled"] { border: 1px solid rgba(255, 196, 80, .78); }
+    .rts-progress-overlay[data-state="stalled"],
+    .rts-progress-overlay[data-state="reconnecting"] { border: 1px solid rgba(255, 196, 80, .78); }
     .rts-progress-head { display: flex; gap: 10px; align-items: center; }
     .rts-progress-spinner {
       width: 18px;
@@ -52,6 +53,21 @@
     .rts-progress-bar.indeterminate { animation: rts-progress-slide 1.2s ease-in-out infinite; }
     .rts-progress-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 9px; font-size: 12px; color: rgba(255,255,255,.72); }
     .rts-progress-note { margin-top: 7px; font-size: 12px; color: rgba(255,255,255,.82); }
+    .rts-progress-action {
+      display: none;
+      width: 100%;
+      margin-top: 10px;
+      min-height: 42px;
+      border: 1px solid rgba(255,255,255,.32);
+      border-radius: 10px;
+      background: rgba(255,255,255,.10);
+      color: inherit;
+      font: inherit;
+      font-weight: 750;
+      pointer-events: auto;
+      touch-action: manipulation;
+    }
+    .rts-progress-action.visible { display: block; }
     @keyframes rts-progress-spin { to { transform: rotate(360deg); } }
     @keyframes rts-progress-slide { 0% { transform: translateX(-120%); } 50% { transform: translateX(260%); } 100% { transform: translateX(-120%); } }
     @media (prefers-reduced-motion: reduce) {
@@ -76,6 +92,7 @@
       <span class="rts-progress-updated">最終更新 0秒前</span>
     </div>
     <div class="rts-progress-note"></div>
+    <button type="button" class="rts-progress-action">状態確認を再開</button>
   `;
   document.body.appendChild(root);
 
@@ -85,12 +102,14 @@
   const elapsed = root.querySelector('.rts-progress-elapsed');
   const updated = root.querySelector('.rts-progress-updated');
   const note = root.querySelector('.rts-progress-note');
+  const action = root.querySelector('.rts-progress-action');
 
   let startedAt = 0;
   let updatedAt = 0;
   let timer = 0;
   let hideTimer = 0;
   let active = false;
+  let actionHandler = null;
 
   const secondsText = value => `${Math.max(0, Math.floor(value / 1000))}秒`;
 
@@ -100,9 +119,21 @@
     elapsed.textContent = `経過 ${secondsText(now - startedAt)}`;
     updated.textContent = `最終更新 ${secondsText(now - updatedAt)}前`;
     const silentFor = now - updatedAt;
-    if (silentFor >= 120000) root.dataset.state = 'stalled';
+    if (silentFor >= 120000 && root.dataset.state === 'running') root.dataset.state = 'stalled';
     else if (silentFor >= 30000 && root.dataset.state === 'running') root.dataset.state = 'waiting';
   }
+
+  function setAction(label, handler) {
+    actionHandler = typeof handler === 'function' ? handler : null;
+    action.textContent = label || '状態確認を再開';
+    action.classList.toggle('visible', Boolean(actionHandler));
+  }
+
+  action.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    actionHandler?.();
+  });
 
   function show(payload = {}) {
     window.clearTimeout(hideTimer);
@@ -113,6 +144,7 @@
     title.textContent = payload.title || '✓ 受け付けました';
     stage.textContent = payload.stage || '処理を開始しています…';
     note.textContent = payload.note || '';
+    setAction(payload.actionLabel, payload.onAction);
     setProgress(payload.percent);
     root.classList.add('visible');
     window.clearInterval(timer);
@@ -139,6 +171,9 @@
     if (payload.stage) stage.textContent = payload.stage;
     if (payload.note !== undefined) note.textContent = payload.note || '';
     if (payload.percent !== undefined) setProgress(payload.percent);
+    if (payload.onAction !== undefined || payload.actionLabel !== undefined) {
+      setAction(payload.actionLabel, payload.onAction);
+    }
     tick();
   }
 
@@ -149,6 +184,7 @@
       stage: payload.stage || '',
       note: payload.note || '',
       percent: 100,
+      onAction: null,
     });
     active = false;
     window.clearInterval(timer);
@@ -167,5 +203,5 @@
     });
   }
 
-  window.RTSProgressOverlay = {show, update, finish, fail};
+  window.RTSProgressOverlay = {show, update, finish, fail, setAction};
 })();
