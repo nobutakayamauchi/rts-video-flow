@@ -22,7 +22,7 @@ TIMED_NARRATION_SCRIPT_RE = re.compile(
     r'<script\s+src=["\']timed-narration-(?:finish|recording-overlay|visibility-fix|return-fix)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
 )
-COMPOSE_CONTROL_TAG = '<script src="static/compose-cloud-render.js?v=20260805a"></script>'
+COMPOSE_CONTROL_TAG = '<script src="static/compose-cloud-render.js?v=20260805b"></script>'
 COMPOSE_CONTROL_RE = re.compile(
     r'<script\s+src=["\'](?:static/)?(?:compose-controls-recovery|compose-cloud-render)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
