@@ -1,6 +1,6 @@
 # rts-video-flow Status
 
-Status: ACTIVE NARROW IMPLEMENTATION / SECURITY-GATED EMERGENCY OVERFLOW / REVIEW BEFORE EXECUTION
+Status: ACTIVE NARROW IMPLEMENTATION / LOCAL SECURITY PATH VERIFIED / PAID CLOUD REVALIDATION PENDING
 
 ## Current position
 
@@ -35,6 +35,7 @@ The required order is:
 
 ```text
 Security Gate
+→ Local hash revalidation
 → Cost / Consequence Gate
 → Explicit Single-Use Approval
 → Scoped Execution
@@ -61,7 +62,7 @@ Implemented in the branch:
 
 The previous image was built before the Security Gate hardening. It must not be used for production or untrusted input. A new image build requires a new explicit cost approval.
 
-## Security controls now represented in code
+## Security controls represented in code
 
 - allowlisted media suffixes
 - regular-file and non-symlink requirement
@@ -70,10 +71,13 @@ The previous image was built before the Security Gate hardening. It must not be 
 - ffprobe timeout
 - stream-type and stream-count limits
 - resolution, duration, and frame-rate limits
-- SHA-256-bound SECURITY_PASS
-- Cost Gate refusal without a current matching pass
+- SHA-256-bound `SECURITY_PASS`
+- Security Pass expiry, policy, and byte-count validation
+- Cost Gate local file existence and non-symlink revalidation
+- Cost Gate local size and SHA-256 revalidation
+- refusal of same-size content replacement after inspection
 - GCS bucket and prefix allowlist
-- downloaded-input hash revalidation
+- downloaded-input hash revalidation in the worker
 - no shell interpolation
 - FFmpeg stdin disabled
 - one render thread
@@ -81,27 +85,42 @@ The previous image was built before the Security Gate hardening. It must not be 
 - metadata and chapters removed
 - existing output object overwrite refusal
 
-## What is verified
+## Verified on Oracle
 
-- original Cloud Build pipeline can build and push a container
-- Artifact Registry contains the previous image
-- Cloud Run Job definition exists and is Ready
-- Cost Gate baseline tests previously passed before Security Gate integration
-- documentation and code changes are committed to the feature branch
+The free local path has been exercised with generated synthetic media and reject samples.
 
-## What is not yet verified
+Verified results:
 
-- the new Security Gate tests on Oracle
-- real ffprobe behavior against generated safe and malformed samples
-- new container image build
+- a valid one-second MP4 produced a hash-bound `SECURITY_PASS`
+- unsafe filename rejection
+- non-allowlisted suffix rejection
+- malformed MP4 rejection through ffprobe failure
+- Security Pass input-size mismatch rejection
+- expired Security Pass rejection
+- unsupported policy rejection
+- local source-file existence check
+- local symlink rejection
+- local size-change rejection
+- local same-size content replacement rejection through SHA-256 mismatch
+- a fresh real Security Pass reached the approval boundary with `local_hash_revalidated: true`
+- execution stopped without `--approve`
+- `14 passed` for the combined Security Gate and Cost Gate test set
+
+No Cloud Build or Cloud Run execution was performed during these checks.
+
+## Not yet verified
+
+- new secured container image build
 - Cloud Run Job image update
 - end-to-end Security Pass → Cost Approval → GCS → Cloud Run → output flow
+- approval consumption and duplicate-use refusal in a real cloud run
 - actual runtime cost of the minimal secured render
-- cleanup and approval-consumption behavior
+- output hash, logs, duration, cleanup, and temporary-object lifecycle
 
-## Prohibited until verification
+## Prohibited until cloud revalidation
 
 - executing the current Cloud Run Job with untrusted or real user media
+- using the old `cost-gated-v1` image as the secured worker
 - automatic paid fallback
 - automatic retries
 - recurring schedules
@@ -111,12 +130,12 @@ The previous image was built before the Security Gate hardening. It must not be 
 
 ## Completion condition
 
-The emergency overflow path is not complete until:
+The emergency overflow path is complete only after:
 
-1. local Security and Cost Gate tests pass;
-2. safe and reject sample tests pass;
-3. a newly approved image build succeeds;
-4. the Job is updated without execution;
-5. one minimal render is explicitly approved and completes;
-6. output, logs, hashes, duration, actual cost, and cleanup are verified;
-7. final specifications and change history are updated from observed results.
+1. a newly approved secured image build succeeds;
+2. the Job is updated to the new image without execution;
+3. one minimal synthetic render is separately and explicitly approved;
+4. output, logs, hashes, duration, actual cost, approval consumption, and cleanup are verified;
+5. final specifications and change history are updated from observed cloud results.
+
+Until those steps are approved and observed, the local safety specification is verified while the paid cloud execution path remains pending.
