@@ -2,7 +2,7 @@
 """Reconcile durable cloud-render state with Cloud Run and GCS.
 
 A request may remain RUNNING after the asynchronous Cloud Run execution has
-already finished.  This module turns the status read into a bounded, idempotent
+already finished. This module turns the status read into a bounded, idempotent
 self-healing check and materializes the completed artifact into the existing
 local output contract.
 """
@@ -59,19 +59,26 @@ def inspect_execution(record: dict[str, Any], *, runner: Runner = subprocess.run
     )
 
 
+def _execution_status(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the Cloud Run status object across gcloud output shapes."""
+    status = payload.get("status")
+    return status if isinstance(status, dict) else payload
+
+
 def execution_outcome(payload: dict[str, Any]) -> str:
     """Return RUNNING, SUCCEEDED, or FAILED from a Cloud Run execution payload."""
-    if int(payload.get("succeededCount") or 0) > 0:
+    status = _execution_status(payload)
+    if int(status.get("succeededCount") or 0) > 0:
         return "SUCCEEDED"
-    if int(payload.get("failedCount") or 0) > 0 or int(payload.get("cancelledCount") or 0) > 0:
+    if int(status.get("failedCount") or 0) > 0 or int(status.get("cancelledCount") or 0) > 0:
         return "FAILED"
-    for condition in payload.get("conditions") or []:
+    for condition in status.get("conditions") or []:
         if not isinstance(condition, dict) or condition.get("type") != "Completed":
             continue
-        status = str(condition.get("status") or "").lower()
-        if status == "true":
+        value = str(condition.get("status") or "").lower()
+        if value == "true":
             return "SUCCEEDED"
-        if status == "false":
+        if value == "false":
             return "FAILED"
     return "RUNNING"
 
@@ -149,10 +156,11 @@ def reconcile_active_record(
         return record
 
     outcome = execution_outcome(payload)
+    execution_status = _execution_status(payload)
     request_id = str(record["request_id"])
     if outcome == "FAILED":
         message = "Cloud Run execution failed"
-        for condition in payload.get("conditions") or []:
+        for condition in execution_status.get("conditions") or []:
             if isinstance(condition, dict) and condition.get("type") == "Completed":
                 message = str(condition.get("message") or message)
                 break
