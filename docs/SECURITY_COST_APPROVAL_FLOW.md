@@ -1,6 +1,6 @@
 # Vlog Emergency Overflow: Security → Cost → Approval Flow
 
-Status: IMPLEMENTED IN BRANCH / CLOUD EXECUTION NOT YET REVALIDATED
+Status: LOCAL FLOW VERIFIED / PAID CLOUD EXECUTION NOT YET REVALIDATED
 
 ## Position
 
@@ -15,16 +15,18 @@ LOCAL MEDIA
 → scripts/media_security_gate.py
 → SECURITY_PASS.json (hash-bound)
 → scripts/cloud_cost_gate.py
-→ one-shot approval record
+→ local file existence / size / SHA-256 revalidation
+→ estimate and consequence display
+→ explicit one-shot approval record
 → upload to isolated GCS prefixes
 → Cloud Run Job
 → worker re-verifies URI boundary, hashes, and stream structure
 → FFmpeg render
 → new output object only
-→ outcome and cost review
+→ outcome, approval-consumption, cleanup, and cost review
 ```
 
-The Cloud Run Job must not run before both gates pass.
+The Cloud Run Job must not run before both gates pass and a fresh human approval is issued.
 
 ## Security Gate
 
@@ -45,7 +47,17 @@ Files should be renamed to generated internal ASCII identifiers before inspectio
 
 ## Cost Gate
 
-`scripts/cloud_cost_gate.py` refuses to estimate or approve without a current `SECURITY_PASS` whose total bytes match the requested input size.
+`scripts/cloud_cost_gate.py` refuses to estimate or approve without a current `SECURITY_PASS`.
+
+Before displaying an approval candidate it now reopens every local source file and verifies:
+
+- the path is present in the Security Pass
+- the source still exists as a regular file
+- the source is not a symlink
+- the current byte size matches the inspected size
+- the current SHA-256 matches the inspected SHA-256
+
+This blocks deletion, path substitution, size changes, and same-size content replacement between inspection and cost approval.
 
 Approval records include:
 
@@ -84,15 +96,39 @@ FFmpeg runs with:
 
 The worker image must be rebuilt after security changes. The currently deployed `cost-gated-v1` image predates this Security Gate and must not be executed for production or untrusted inputs.
 
-## Validation before next paid action
+## Verified local evidence
 
-1. Pull the branch on Oracle.
-2. Run local unit tests.
-3. Run Security Gate against a tiny generated test video and a deliberately invalid file.
-4. Review the resulting `SECURITY_PASS`.
-5. Confirm Cost Gate refuses missing, expired, and size-mismatched passes.
-6. Rebuild the container only after a new explicit cost approval.
-7. Update the Cloud Run Job image without executing it.
-8. Perform one explicitly approved minimal render.
-9. Verify output hash, logs, duration, and actual cost.
-10. Update final specifications and change history after the real execution succeeds.
+Oracle validation completed with synthetic media and reject cases:
+
+- valid one-second MP4 accepted and Security Pass issued
+- unsafe filename rejected
+- allowlist violation rejected
+- malformed MP4 rejected
+- size-mismatched pass rejected
+- expired pass rejected
+- unsupported policy rejected
+- missing local source rejected
+- symlink source rejected
+- changed-size source rejected
+- same-size changed-content source rejected by SHA-256
+- fresh end-to-end local preflight reported `local_hash_revalidated: true`
+- the process stopped at `approval required` without issuing approval
+- combined test result: `14 passed`
+
+These checks were local and did not execute Cloud Build, Cloud Run, or a paid render.
+
+## Remaining approved actions
+
+The remaining work is intentionally split into separate paid-capable decisions:
+
+1. show the build target, image tag, and estimated maximum charge;
+2. obtain explicit approval for one secured container build;
+3. build and inspect the new image;
+4. update the Cloud Run Job image without executing it;
+5. prepare isolated synthetic GCS input and manifest;
+6. show the render estimate and obtain a separate one-shot approval;
+7. execute one minimal render;
+8. verify output hash, logs, duration, actual cost, approval consumption, duplicate-use refusal, and cleanup;
+9. update final specifications and history from the observed cloud result.
+
+Build approval does not authorize render execution. Job-image update does not authorize Job execution. Every paid-capable action remains fail-closed and separately approved.
