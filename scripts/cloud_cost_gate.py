@@ -56,6 +56,38 @@ def validate(estimate: Estimate) -> list[str]:
     return errors
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def revalidate_security_files(files: list[object]) -> None:
+    for item in files:
+        if not isinstance(item, dict):
+            raise SystemExit("security pass contains invalid file records")
+        raw_path = str(item.get("path") or "")
+        expected_hash = str(item.get("sha256") or "")
+        expected_size = int(item.get("size_bytes") or 0)
+        if not raw_path or len(expected_hash) != 64 or expected_size <= 0:
+            raise SystemExit("security pass contains invalid file records")
+
+        path = Path(raw_path)
+        if not path.is_file() or path.is_symlink():
+            raise SystemExit("security pass input file missing or unsafe")
+        try:
+            actual_size = path.stat().st_size
+            actual_hash = sha256_file(path)
+        except OSError as exc:
+            raise SystemExit("security pass input file cannot be read") from exc
+        if actual_size != expected_size:
+            raise SystemExit("security pass file size changed")
+        if not secrets.compare_digest(actual_hash, expected_hash):
+            raise SystemExit("security pass file hash mismatch")
+
+
 def load_security_pass(path: Path, expected_input_bytes: int) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -80,6 +112,7 @@ def load_security_pass(path: Path, expected_input_bytes: int) -> dict[str, Any]:
         raise SystemExit("security pass input size mismatch")
     if any(len(str(item.get("sha256") or "")) != 64 for item in files if isinstance(item, dict)):
         raise SystemExit("security pass contains invalid hashes")
+    revalidate_security_files(files)
     return payload
 
 
@@ -153,6 +186,7 @@ def main() -> None:
                     "status": security_pass["status"],
                     "fingerprint": security_pass["security_fingerprint"],
                     "files": len(security_pass["files"]),
+                    "local_hash_revalidated": True,
                 },
                 "estimate": asdict(estimate),
                 "errors": errors,
