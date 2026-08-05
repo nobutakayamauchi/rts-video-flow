@@ -35,13 +35,31 @@ def test_execution_outcome_understands_success_and_failure() -> None:
     assert cloud_render_reconcile.execution_outcome({"conditions": []}) == "RUNNING"
 
 
+def test_execution_outcome_understands_nested_gcloud_status() -> None:
+    assert cloud_render_reconcile.execution_outcome(
+        {"status": {"succeededCount": 1, "conditions": []}}
+    ) == "SUCCEEDED"
+    assert cloud_render_reconcile.execution_outcome(
+        {
+            "status": {
+                "failedCount": 1,
+                "conditions": [
+                    {"type": "Completed", "status": "False", "message": "container failed"}
+                ],
+            }
+        }
+    ) == "FAILED"
+
+
 def test_successful_execution_is_materialized_and_completed(tmp_path, monkeypatch) -> None:
     store, record = running_record(tmp_path)
     monkeypatch.setattr(cloud_render_reconcile, "OUTPUT_DIR", tmp_path / "output")
 
     def runner(command, **kwargs):
         if command[:4] == ["gcloud", "run", "jobs", "executions"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps({"succeededCount": 1}), "")
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"status": {"succeededCount": 1}}), ""
+            )
         if command[:3] == ["gcloud", "storage", "ls"]:
             return subprocess.CompletedProcess(command, 0, record["output_uri"] + "\n", "")
         if command[:3] == ["gcloud", "storage", "cp"]:
@@ -63,10 +81,12 @@ def test_failed_execution_is_persisted(tmp_path) -> None:
 
     def runner(command, **kwargs):
         payload = {
-            "failedCount": 1,
-            "conditions": [
-                {"type": "Completed", "status": "False", "message": "container failed"}
-            ],
+            "status": {
+                "failedCount": 1,
+                "conditions": [
+                    {"type": "Completed", "status": "False", "message": "container failed"}
+                ],
+            }
         }
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
