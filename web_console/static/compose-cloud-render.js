@@ -7,6 +7,7 @@
 
   let busy = false;
   let pollTimer = 0;
+  let lastTouchAt = 0;
 
   const apiUrlFor = path => {
     if (typeof apiUrl === 'function') return apiUrl(path);
@@ -132,15 +133,21 @@
 
   function bind(button, mode) {
     const handler = event => {
+      if (event.type === 'touchend') lastTouchAt = Date.now();
+      if (event.type === 'click' && Date.now() - lastTouchAt < 800) return;
       event.preventDefault();
+      event.stopPropagation();
       event.stopImmediatePropagation();
       cloudRender(mode);
     };
+    button.style.touchAction = 'manipulation';
+    button.addEventListener('touchend', handler, {capture: true, passive: false});
     button.addEventListener('click', handler, true);
   }
 
   bind(previewButton, 'preview');
   bind(finalButton, 'final');
 
+  document.documentElement.dataset.cloudRenderController = 'ready';
   window.addEventListener('pagehide', stopPolling);
 })();
