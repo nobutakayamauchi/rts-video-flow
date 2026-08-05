@@ -6,11 +6,15 @@ APP_V5 = (ROOT / "web_console" / "app_v5.py").read_text(encoding="utf-8")
 
 
 def test_compose_controller_uses_governed_cloud_render_sequence() -> None:
-    prepare = CONTROLLER.index("api/cloud-render/prepare-project")
-    approve = CONTROLLER.index("api/cloud-render/approve")
-    dispatch = CONTROLLER.index("api/cloud-render/dispatch")
-    status = CONTROLLER.index("api/cloud-render/status/")
-    assert prepare < approve < dispatch < status
+    flow_start = CONTROLLER.index("async function cloudRender(mode)")
+    flow_end = CONTROLLER.index("function bind(button, mode)", flow_start)
+    flow = CONTROLLER[flow_start:flow_end]
+
+    prepare = flow.index("api/cloud-render/prepare-project")
+    approve = flow.index("api/cloud-render/approve")
+    dispatch = flow.index("api/cloud-render/dispatch")
+    poll = flow.index("await pollStatus")
+    assert prepare < approve < dispatch < poll
     assert "api/output/render" not in CONTROLLER
 
 
