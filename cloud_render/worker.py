@@ -9,8 +9,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from google.cloud import storage
-
 ALLOWED_BUCKET = "rts-vlog-render-files-20260805"
 ALLOWED_INPUT_PREFIX = "inputs/"
 ALLOWED_MANIFEST_PREFIX = "manifests/"
@@ -32,13 +30,13 @@ def split_gs_uri(uri: str, *, prefix: str) -> tuple[str, str]:
     return parsed.netloc, object_name
 
 
-def download(client: storage.Client, uri: str, target: Path, *, prefix: str) -> None:
+def download(client: Any, uri: str, target: Path, *, prefix: str) -> None:
     bucket_name, object_name = split_gs_uri(uri, prefix=prefix)
     target.parent.mkdir(parents=True, exist_ok=True)
     client.bucket(bucket_name).blob(object_name).download_to_filename(target)
 
 
-def upload(client: storage.Client, source: Path, uri: str) -> None:
+def upload(client: Any, source: Path, uri: str) -> None:
     bucket_name, object_name = split_gs_uri(uri, prefix=ALLOWED_OUTPUT_PREFIX)
     client.bucket(bucket_name).blob(object_name).upload_from_filename(source, if_generation_match=0)
 
@@ -114,6 +112,17 @@ def validate_manifest(manifest: dict[str, Any], approval_id: str) -> tuple[list[
     return [str(uri) for uri in inputs], [str(value) for value in hashes], output_uri
 
 
+def create_storage_client() -> Any:
+    try:
+        from google.cloud import storage
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "google-cloud-storage is required only for Cloud Run execution; "
+            "install cloud_render/requirements.txt before running the worker"
+        ) from exc
+    return storage.Client()
+
+
 def main() -> None:
     manifest_uri = os.environ.get("RENDER_MANIFEST_URI", "").strip()
     approval_id = os.environ.get("COST_APPROVAL_ID", "").strip()
@@ -121,7 +130,7 @@ def main() -> None:
         raise SystemExit("RENDER_MANIFEST_URI and COST_APPROVAL_ID are required")
     split_gs_uri(manifest_uri, prefix=ALLOWED_MANIFEST_PREFIX)
 
-    client = storage.Client()
+    client = create_storage_client()
     with tempfile.TemporaryDirectory(prefix="rts-render-") as temp_dir:
         root = Path(temp_dir)
         manifest_path = root / "manifest.json"
