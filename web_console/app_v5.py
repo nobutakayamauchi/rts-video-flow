@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""V5 web entry point with finished timed-narration interaction layers."""
+"""V5 web entry point with governed cloud-render handoff."""
 from __future__ import annotations
 
 import re
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from web_console.app import STATIC_DIR
 from web_console.app_v4 import app
+from web_console.cloud_render_api import router as cloud_render_router
+from web_console import app_v3 as legacy
 
 TIMED_NARRATION_TAGS = (
     '<script src="timed-narration-finish.js?v=20260805b"></script>',
@@ -20,11 +22,26 @@ TIMED_NARRATION_SCRIPT_RE = re.compile(
     r'<script\s+src=["\']timed-narration-(?:finish|recording-overlay|visibility-fix|return-fix)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
 )
-COMPOSE_CONTROL_TAG = '<script src="static/compose-controls-recovery.js?v=20260805a"></script>'
+COMPOSE_CONTROL_TAG = ""
 COMPOSE_CONTROL_RE = re.compile(
     r'<script\s+src=["\'](?:static/)?compose-controls-recovery\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
 )
+
+
+def reject_local_render(project_name: str, mode: str):
+    """Fail closed instead of OOM-killing the Oracle web service."""
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Oracle上でのローカル書き出しは、メモリ不足による停止を防ぐため無効化しました。"
+            "RTS 3.5のSecurity Gate・Cost Gate・Cloud Run経路から実行してください。"
+        ),
+    )
+
+
+legacy.run_render = reject_local_render
+app.include_router(cloud_render_router)
 
 
 @app.middleware("http")
