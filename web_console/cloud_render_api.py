@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""HTTP API for governed Vlog cloud-render handoff.
-
-This layer is intentionally non-executing: it validates and persists a
-security-bound, cost-bounded request, consumes explicit approval once, and
-exposes durable status. A later executor may claim QUEUED records and invoke
-Cloud Run.
-"""
+"""HTTP API for governed Vlog cloud-render handoff."""
 from __future__ import annotations
 
 import json
@@ -15,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Form, HTTPException
 
 from web_console.app import ROOT
+from web_console.cloud_render_executor import dispatch
 from web_console.cloud_render_handoff import (
     HandoffError,
     HandoffStore,
@@ -114,6 +109,22 @@ def approve_cloud_render(
         status = 404 if detail == "render request not found" else 409
         raise HTTPException(status_code=status, detail=detail) from error
     return _public_record(record)
+
+
+@router.post("/dispatch")
+def dispatch_cloud_render(request_id: str = Form(...)) -> dict[str, Any]:
+    """Submit a previously approved QUEUED request to Cloud Run exactly once."""
+    store = handoff_store()
+    try:
+        result = dispatch(store, request_id)
+        record = store.read(request_id)
+    except HandoffError as error:
+        detail = str(error)
+        status = 404 if detail == "render request not found" else 409
+        raise HTTPException(status_code=status, detail=detail) from error
+    response = _public_record(record)
+    response["execution"] = result.execution
+    return response
 
 
 @router.get("/status/{request_id}")
