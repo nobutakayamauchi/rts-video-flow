@@ -139,7 +139,9 @@ class HandoffStore:
             raise HandoffError("render request already consumed")
         if current > int(record["expires_at"]):
             raise HandoffError("render request expired")
-        if not secrets.compare_digest(str(record["confirmation"]), confirmation):
+        expected_confirmation = str(record["confirmation"]).encode("utf-8")
+        supplied_confirmation = confirmation.encode("utf-8")
+        if not secrets.compare_digest(expected_confirmation, supplied_confirmation):
             raise HandoffError("approval confirmation does not match")
 
         record["status"] = "QUEUED"
