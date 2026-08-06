@@ -54,7 +54,7 @@
   }
 
   if (completed === 'preview') {
-    const previewUrl = apiUrl(`api/output-file/${encodedProject}/preview.mp4`);
+    const previewUrl = `video-review.html?project=${encodedProject}&mode=preview&v=20260806a`;
     banner.innerHTML = `
       <h2>プレビューが完成しました</h2>
       <p>まず動画を確認してください。問題がなければ下の「OK・最終版を書き出す」へ進みます。</p>
@@ -90,7 +90,9 @@
       if (link && link.dataset.rtsDecorated !== 'preview') {
         link.dataset.rtsDecorated = 'preview';
         link.textContent = 'プレビューを再生して確認';
+        link.href = `video-review.html?project=${encodedProject}&mode=preview&v=20260806a`;
         link.removeAttribute('target');
+        link.removeAttribute('download');
       }
     }
     if (completed === 'final') {
