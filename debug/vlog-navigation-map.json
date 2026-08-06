@@ -1,0 +1,28 @@
+{
+  "title": "Vlog Wizard Export Workflow",
+  "screens": [
+    {"id": "compose.ready", "label": "構成・操作可能", "section": "構成", "screenshot": "screens/compose-ready.png", "x": 40, "y": 60},
+    {"id": "export.preview.running", "label": "プレビュー処理中", "section": "書き出し", "screenshot": "screens/preview-running.png", "x": 420, "y": 60},
+    {"id": "export.preview.completed", "label": "プレビュー完成", "section": "書き出し", "screenshot": "screens/preview-completed.png", "x": 800, "y": 60},
+    {"id": "review.preview.ready", "label": "プレビュー再生", "section": "確認", "screenshot": "screens/preview-review.png", "x": 1180, "y": 60},
+    {"id": "export.final.approval", "label": "最終版承認", "section": "書き出し", "screenshot": "screens/final-approval.png", "x": 420, "y": 430},
+    {"id": "export.final.running", "label": "最終版処理中", "section": "書き出し", "screenshot": "screens/final-running.png", "x": 800, "y": 430},
+    {"id": "export.final.completed", "label": "最終版完成・保存", "section": "出力", "screenshot": "screens/final-completed.png", "x": 1180, "y": 430},
+    {"id": "transport.reconnecting", "label": "通信再接続中", "section": "復旧", "screenshot": "screens/reconnecting.png", "x": 420, "y": 800},
+    {"id": "export.failed", "label": "書き出し失敗", "section": "異常", "screenshot": "screens/export-failed.png", "x": 800, "y": 800}
+  ],
+  "actions": [
+    {"id": "preview.start", "source": "compose.ready", "label": "プレビューを書き出す", "expected_target": "export.preview.running", "observed_target": null, "status": "unknown"},
+    {"id": "preview.complete", "source": "export.preview.running", "label": "工程7/7完了", "expected_target": "export.preview.completed", "observed_target": null, "status": "unknown"},
+    {"id": "preview.review", "source": "export.preview.completed", "label": "プレビューを再生して確認", "expected_target": "review.preview.ready", "observed_target": null, "status": "unknown"},
+    {"id": "preview.fix", "source": "review.preview.ready", "label": "構成を修正する", "expected_target": "compose.ready", "observed_target": null, "status": "unknown", "kind": "return"},
+    {"id": "final.start.after-preview", "source": "review.preview.ready", "label": "問題なし・最終版を書き出す", "expected_target": "export.final.approval", "observed_target": null, "status": "unknown", "note": "過去に表示されるが押せない不具合が発生。P0回帰対象"},
+    {"id": "final.approve", "source": "export.final.approval", "label": "1回承認", "expected_target": "export.final.running", "observed_target": null, "status": "unknown"},
+    {"id": "final.complete", "source": "export.final.running", "label": "工程7/7完了", "expected_target": "export.final.completed", "observed_target": null, "status": "unknown"},
+    {"id": "preview.transport-loss", "source": "export.preview.running", "label": "通信切断", "expected_target": "transport.reconnecting", "observed_target": null, "status": "unknown"},
+    {"id": "final.transport-loss", "source": "export.final.running", "label": "通信切断", "expected_target": "transport.reconnecting", "observed_target": null, "status": "unknown"},
+    {"id": "reconnect.resume-preview", "source": "transport.reconnecting", "label": "状態再確認・プレビュー", "expected_target": "export.preview.running", "observed_target": null, "status": "unknown", "kind": "return"},
+    {"id": "reconnect.resume-final", "source": "transport.reconnecting", "label": "状態再確認・最終版", "expected_target": "export.final.running", "observed_target": null, "status": "unknown", "kind": "return"},
+    {"id": "failed.retry", "source": "export.failed", "label": "再実行", "expected_target": "compose.ready", "observed_target": null, "status": "unknown", "kind": "return"}
+  ]
+}
