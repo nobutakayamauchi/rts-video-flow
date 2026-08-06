@@ -84,22 +84,28 @@
     markTarget(finalPanel);
   }
 
-  const observer = new MutationObserver(() => {
+  function decorateOutputLinks() {
     if (completed === 'preview') {
       const link = $('#previewInfo a.button');
-      if (link) {
+      if (link && link.dataset.rtsDecorated !== 'preview') {
+        link.dataset.rtsDecorated = 'preview';
         link.textContent = 'プレビューを再生して確認';
         link.removeAttribute('target');
       }
     }
     if (completed === 'final') {
       const link = $('#finalInfo a.button');
-      if (link) {
+      if (link && link.dataset.rtsDecorated !== 'final') {
+        link.dataset.rtsDecorated = 'final';
         link.textContent = '保存先を選んで保存';
         link.removeAttribute('target');
         link.setAttribute('download', `${project || 'rts-video'}.mp4`);
       }
     }
-  });
+  }
+
+  decorateOutputLinks();
+  const observer = new MutationObserver(() => decorateOutputLinks());
   observer.observe(document.body, {subtree: true, childList: true});
+  window.setTimeout(() => observer.disconnect(), 15000);
 })();
