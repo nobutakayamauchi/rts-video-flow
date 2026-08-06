@@ -26,8 +26,13 @@ COMPOSE_CONTROL_TAGS = (
     '<script src="static/rts-progress-overlay.js?v=20260806a"></script>',
     '<script src="static/compose-cloud-render.js?v=20260806b"></script>',
 )
+OUTPUT_CONTROL_TAGS = (
+    '<script src="rts-progress-overlay.js?v=20260806a"></script>',
+    '<script src="compose-cloud-render.js?v=20260806b"></script>',
+    '<script src="output-review-flow.js?v=20260806a"></script>',
+)
 COMPOSE_CONTROL_RE = re.compile(
-    r'<script\s+src=["\'](?:static/)?(?:compose-controls-recovery|compose-cloud-render|rts-progress-overlay)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
+    r'<script\s+src=["\'](?:static/)?(?:compose-controls-recovery|compose-cloud-render|rts-progress-overlay|output-review-flow)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
 )
 
@@ -47,33 +52,35 @@ legacy.run_render = reject_local_render
 app.include_router(cloud_render_router)
 
 
+def uncached_html(html: str) -> HTMLResponse:
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+
+
 @app.middleware("http")
 async def inject_mobile_interaction_controllers(request: Request, call_next):
     """Serve mobile editors uncached with one canonical controller set."""
     if request.method == "GET" and request.url.path == "/static/timed-narration.html":
         html = (STATIC_DIR / "timed-narration.html").read_text(encoding="utf-8")
         html = TIMED_NARRATION_SCRIPT_RE.sub("", html)
-        injected = "\n".join(TIMED_NARRATION_TAGS)
-        html = html.replace("</body>", f"{injected}\n</body>")
-        return HTMLResponse(
-            html,
-            headers={
-                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-                "Pragma": "no-cache",
-            },
-        )
+        html = html.replace("</body>", f"{'\n'.join(TIMED_NARRATION_TAGS)}\n</body>")
+        return uncached_html(html)
 
     if request.method == "GET" and request.url.path in {"/", "/static/compose.html"}:
         html = (STATIC_DIR / "compose.html").read_text(encoding="utf-8")
         html = COMPOSE_CONTROL_RE.sub("", html)
-        injected = "\n".join(COMPOSE_CONTROL_TAGS)
-        html = html.replace("</body>", f"{injected}\n</body>")
-        return HTMLResponse(
-            html,
-            headers={
-                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-                "Pragma": "no-cache",
-            },
-        )
+        html = html.replace("</body>", f"{'\n'.join(COMPOSE_CONTROL_TAGS)}\n</body>")
+        return uncached_html(html)
+
+    if request.method == "GET" and request.url.path == "/static/output.html":
+        html = (STATIC_DIR / "output.html").read_text(encoding="utf-8")
+        html = COMPOSE_CONTROL_RE.sub("", html)
+        html = html.replace("</body>", f"{'\n'.join(OUTPUT_CONTROL_TAGS)}\n</body>")
+        return uncached_html(html)
 
     return await call_next(request)
