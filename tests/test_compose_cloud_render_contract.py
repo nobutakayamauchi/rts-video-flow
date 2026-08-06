@@ -69,12 +69,12 @@ def test_shared_overlay_is_fixed_following_nonblocking_and_detects_stalls() -> N
     assert "silentFor >= 120000" in OVERLAY
     assert "elapsed.textContent" in OVERLAY
     assert "updated.textContent" in OVERLAY
-    assert "window.RTSProgressOverlay = {show, update, finish, fail, setAction}" in OVERLAY
+    assert "window.RTSProgressOverlay = {show, update, finish, fail, setAction, setStep}" in OVERLAY
 
 
 def test_app_v5_injects_overlay_before_governed_compose_controller() -> None:
-    overlay = APP_V5.index('rts-progress-overlay.js?v=20260805b')
-    controller = APP_V5.index('compose-cloud-render.js?v=20260805f')
+    overlay = APP_V5.index('rts-progress-overlay.js?v=20260806a')
+    controller = APP_V5.index('compose-cloud-render.js?v=20260806b')
     assert overlay < controller
     assert "compose-controls-recovery|compose-cloud-render|rts-progress-overlay" in APP_V5
     assert 'COMPOSE_CONTROL_TAGS = ""' not in APP_V5
