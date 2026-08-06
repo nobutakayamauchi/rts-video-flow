@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rts.local/schemas/replay-result.schema.json",
+  "title": "RTS Replay Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "replay_id", "incident_id", "review_id", "status", "original_scenario_hash", "observed_path", "expected_path", "same_execution_semantics", "regressions", "verified_at", "human_approval"],
+  "properties": {
+    "version": {"const": 1},
+    "replay_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "incident_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "review_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "status": {"enum": ["VERIFIED", "REGRESSION_FOUND"]},
+    "original_scenario_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "observed_path": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "expected_path": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "same_execution_semantics": {"type": "boolean"},
+    "regressions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "human_approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approved", "approved_by", "approved_at"],
+      "properties": {
+        "approved": {"const": true},
+        "approved_by": {"type": "string", "minLength": 1},
+        "approved_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "VERIFIED"}}},
+      "then": {
+        "properties": {
+          "same_execution_semantics": {"const": true},
+          "regressions": {"maxItems": 0}
+        }
+      }
+    }
+  ]
+}
