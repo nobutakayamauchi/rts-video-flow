@@ -23,56 +23,28 @@
       pointer-events: none;
       transition: transform .18s ease, opacity .18s ease;
     }
-    .rts-progress-overlay.visible {
-      transform: translateY(0);
-      opacity: 1;
-      pointer-events: none;
-    }
+    .rts-progress-overlay.visible { transform: translateY(0); opacity: 1; pointer-events: none; }
     .rts-progress-overlay[data-state="failed"] { border: 1px solid rgba(255, 100, 100, .72); }
     .rts-progress-overlay[data-state="completed"] { border: 1px solid rgba(98, 220, 140, .72); }
     .rts-progress-overlay[data-state="stalled"],
     .rts-progress-overlay[data-state="reconnecting"] { border: 1px solid rgba(255, 196, 80, .78); }
     .rts-progress-head { display: flex; gap: 10px; align-items: center; }
-    .rts-progress-spinner {
-      width: 18px;
-      height: 18px;
-      flex: 0 0 auto;
-      border: 2px solid rgba(255,255,255,.26);
-      border-top-color: currentColor;
-      border-radius: 50%;
-      animation: rts-progress-spin .8s linear infinite;
-    }
+    .rts-progress-spinner { width: 18px; height: 18px; flex: 0 0 auto; border: 2px solid rgba(255,255,255,.26); border-top-color: currentColor; border-radius: 50%; animation: rts-progress-spin .8s linear infinite; }
     [data-state="completed"] .rts-progress-spinner,
     [data-state="failed"] .rts-progress-spinner { animation: none; border: 0; width: auto; height: auto; }
     [data-state="completed"] .rts-progress-spinner::before { content: '✓'; font-weight: 800; }
     [data-state="failed"] .rts-progress-spinner::before { content: '!'; font-weight: 800; }
     .rts-progress-title { font-weight: 750; flex: 1; }
-    .rts-progress-stage { margin-top: 7px; color: rgba(255,255,255,.9); }
+    .rts-progress-step { margin-top: 7px; font-weight: 800; color: #ffd15a; }
+    .rts-progress-stage { margin-top: 2px; color: rgba(255,255,255,.9); }
     .rts-progress-track { height: 7px; margin-top: 10px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.14); }
-    .rts-progress-bar { height: 100%; width: 16%; border-radius: inherit; background: currentColor; transition: width .25s ease; }
-    .rts-progress-bar.indeterminate { animation: rts-progress-slide 1.2s ease-in-out infinite; }
+    .rts-progress-bar { height: 100%; width: 0; border-radius: inherit; background: currentColor; transition: width .25s ease; }
     .rts-progress-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 9px; font-size: 12px; color: rgba(255,255,255,.72); }
     .rts-progress-note { margin-top: 7px; font-size: 12px; color: rgba(255,255,255,.82); }
-    .rts-progress-action {
-      display: none;
-      width: 100%;
-      margin-top: 10px;
-      min-height: 42px;
-      border: 1px solid rgba(255,255,255,.32);
-      border-radius: 10px;
-      background: rgba(255,255,255,.10);
-      color: inherit;
-      font: inherit;
-      font-weight: 750;
-      pointer-events: auto;
-      touch-action: manipulation;
-    }
+    .rts-progress-action { display: none; width: 100%; margin-top: 10px; min-height: 42px; border: 1px solid rgba(255,255,255,.32); border-radius: 10px; background: rgba(255,255,255,.10); color: inherit; font: inherit; font-weight: 750; pointer-events: auto; touch-action: manipulation; }
     .rts-progress-action.visible { display: block; }
     @keyframes rts-progress-spin { to { transform: rotate(360deg); } }
-    @keyframes rts-progress-slide { 0% { transform: translateX(-120%); } 50% { transform: translateX(260%); } 100% { transform: translateX(-120%); } }
-    @media (prefers-reduced-motion: reduce) {
-      .rts-progress-spinner, .rts-progress-bar.indeterminate { animation: none; }
-    }
+    @media (prefers-reduced-motion: reduce) { .rts-progress-spinner { animation: none; } }
   `;
   document.head.appendChild(style);
 
@@ -85,8 +57,9 @@
       <span class="rts-progress-spinner" aria-hidden="true"></span>
       <strong class="rts-progress-title">処理を受け付けました</strong>
     </div>
+    <div class="rts-progress-step">工程 1 / 7</div>
     <div class="rts-progress-stage"></div>
-    <div class="rts-progress-track"><div class="rts-progress-bar indeterminate"></div></div>
+    <div class="rts-progress-track"><div class="rts-progress-bar"></div></div>
     <div class="rts-progress-meta">
       <span class="rts-progress-elapsed">経過 0秒</span>
       <span class="rts-progress-updated">最終更新 0秒前</span>
@@ -97,6 +70,7 @@
   document.body.appendChild(root);
 
   const title = root.querySelector('.rts-progress-title');
+  const step = root.querySelector('.rts-progress-step');
   const stage = root.querySelector('.rts-progress-stage');
   const bar = root.querySelector('.rts-progress-bar');
   const elapsed = root.querySelector('.rts-progress-elapsed');
@@ -110,6 +84,8 @@
   let hideTimer = 0;
   let active = false;
   let actionHandler = null;
+  let currentStep = 1;
+  let totalSteps = 7;
 
   const secondsText = value => `${Math.max(0, Math.floor(value / 1000))}秒`;
 
@@ -135,6 +111,15 @@
     actionHandler?.();
   });
 
+  function setStep(value, total = totalSteps) {
+    const numericTotal = Math.max(1, Number(total) || 7);
+    const numericStep = Math.max(0, Math.min(numericTotal, Number(value) || 0));
+    currentStep = numericStep;
+    totalSteps = numericTotal;
+    step.textContent = `工程 ${numericStep} / ${numericTotal}`;
+    setProgress((numericStep / numericTotal) * 100);
+  }
+
   function show(payload = {}) {
     window.clearTimeout(hideTimer);
     active = true;
@@ -145,7 +130,7 @@
     stage.textContent = payload.stage || '処理を開始しています…';
     note.textContent = payload.note || '';
     setAction(payload.actionLabel, payload.onAction);
-    setProgress(payload.percent);
+    setStep(payload.step ?? 1, payload.totalSteps ?? 7);
     root.classList.add('visible');
     window.clearInterval(timer);
     timer = window.setInterval(tick, 1000);
@@ -154,13 +139,7 @@
 
   function setProgress(percent) {
     const numeric = Number(percent);
-    if (Number.isFinite(numeric)) {
-      bar.classList.remove('indeterminate');
-      bar.style.width = `${Math.max(0, Math.min(100, numeric))}%`;
-    } else {
-      bar.classList.add('indeterminate');
-      bar.style.width = '28%';
-    }
+    bar.style.width = `${Math.max(0, Math.min(100, Number.isFinite(numeric) ? numeric : 0))}%`;
   }
 
   function update(payload = {}) {
@@ -170,10 +149,9 @@
     if (payload.title) title.textContent = payload.title;
     if (payload.stage) stage.textContent = payload.stage;
     if (payload.note !== undefined) note.textContent = payload.note || '';
-    if (payload.percent !== undefined) setProgress(payload.percent);
-    if (payload.onAction !== undefined || payload.actionLabel !== undefined) {
-      setAction(payload.actionLabel, payload.onAction);
-    }
+    if (payload.step !== undefined || payload.totalSteps !== undefined) setStep(payload.step ?? currentStep, payload.totalSteps ?? totalSteps);
+    else if (payload.percent !== undefined) setProgress(payload.percent);
+    if (payload.onAction !== undefined || payload.actionLabel !== undefined) setAction(payload.actionLabel, payload.onAction);
     tick();
   }
 
@@ -183,25 +161,29 @@
       title: payload.title || '✓ 完了しました',
       stage: payload.stage || '',
       note: payload.note || '',
-      percent: 100,
+      step: payload.step ?? totalSteps,
+      totalSteps: payload.totalSteps ?? totalSteps,
       onAction: null,
     });
     active = false;
     window.clearInterval(timer);
-    if (payload.persist !== true) {
-      hideTimer = window.setTimeout(() => root.classList.remove('visible'), payload.hideAfter ?? 4500);
-    }
+    if (payload.persist !== true) hideTimer = window.setTimeout(() => root.classList.remove('visible'), payload.hideAfter ?? 4500);
   }
 
   function fail(message, payload = {}) {
-    finish({
+    update({
       state: 'failed',
       title: payload.title || '処理に失敗しました',
       stage: String(message || '不明なエラー'),
       note: payload.note || '内容を確認してから再実行してください。',
-      persist: true,
+      step: payload.step ?? currentStep,
+      totalSteps: payload.totalSteps ?? totalSteps,
+      onAction: payload.onAction,
+      actionLabel: payload.actionLabel,
     });
+    active = false;
+    window.clearInterval(timer);
   }
 
-  window.RTSProgressOverlay = {show, update, finish, fail, setAction};
+  window.RTSProgressOverlay = {show, update, finish, fail, setAction, setStep};
 })();
