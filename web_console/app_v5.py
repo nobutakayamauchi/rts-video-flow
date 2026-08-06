@@ -68,19 +68,22 @@ async def inject_mobile_interaction_controllers(request: Request, call_next):
     if request.method == "GET" and request.url.path == "/static/timed-narration.html":
         html = (STATIC_DIR / "timed-narration.html").read_text(encoding="utf-8")
         html = TIMED_NARRATION_SCRIPT_RE.sub("", html)
-        html = html.replace("</body>", f"{'\n'.join(TIMED_NARRATION_TAGS)}\n</body>")
+        injected = "\n".join(TIMED_NARRATION_TAGS)
+        html = html.replace("</body>", f"{injected}\n</body>")
         return uncached_html(html)
 
     if request.method == "GET" and request.url.path in {"/", "/static/compose.html"}:
         html = (STATIC_DIR / "compose.html").read_text(encoding="utf-8")
         html = COMPOSE_CONTROL_RE.sub("", html)
-        html = html.replace("</body>", f"{'\n'.join(COMPOSE_CONTROL_TAGS)}\n</body>")
+        injected = "\n".join(COMPOSE_CONTROL_TAGS)
+        html = html.replace("</body>", f"{injected}\n</body>")
         return uncached_html(html)
 
     if request.method == "GET" and request.url.path == "/static/output.html":
         html = (STATIC_DIR / "output.html").read_text(encoding="utf-8")
         html = COMPOSE_CONTROL_RE.sub("", html)
-        html = html.replace("</body>", f"{'\n'.join(OUTPUT_CONTROL_TAGS)}\n</body>")
+        injected = "\n".join(OUTPUT_CONTROL_TAGS)
+        html = html.replace("</body>", f"{injected}\n</body>")
         return uncached_html(html)
 
     return await call_next(request)
