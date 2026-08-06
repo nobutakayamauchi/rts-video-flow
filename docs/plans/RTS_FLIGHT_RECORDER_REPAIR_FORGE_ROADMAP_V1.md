@@ -4,15 +4,15 @@
 
 `current / total` means the current item number from the top divided by the total number of items in the relevant phase.
 
-Overall plan: **1 / 34** at creation.
+Current overall position: **4 / 34**. Contract tests are authored and await execution on the Oracle test host.
 
 ## Phase 1 — Specification and adversarial review (1–6)
 
 1. Draft architecture specification. **DONE**
 2. Draft Devil's Advocate Gate specification. **DONE**
-3. Define canonical JSON schemas.
-4. Write contract tests for schemas and illegal transitions.
-5. Run Devil's Advocate Gate A and B.
+3. Define canonical JSON schemas. **DONE**
+4. Write contract tests for schemas and illegal transitions. **AUTHORED — EXECUTION PENDING**
+5. Run Devil's Advocate Gate A and B. **PROVISIONAL PASS_WITH_CONDITIONS**
 6. Revise and freeze v1 contracts.
 
 Exit: frozen schemas and all contract tests passing.
