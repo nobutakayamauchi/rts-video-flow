@@ -54,7 +54,7 @@
   }
 
   if (completed === 'preview') {
-    const previewUrl = `video-review.html?project=${encodedProject}&mode=preview&v=20260806a`;
+    const previewUrl = `video-review.html?project=${encodedProject}&mode=preview&v=20260806b`;
     banner.innerHTML = `
       <h2>プレビューが完成しました</h2>
       <p>まず動画を確認してください。問題がなければ下の「OK・最終版を書き出す」へ進みます。</p>
@@ -90,7 +90,7 @@
       if (link && link.dataset.rtsDecorated !== 'preview') {
         link.dataset.rtsDecorated = 'preview';
         link.textContent = 'プレビューを再生して確認';
-        link.href = `video-review.html?project=${encodedProject}&mode=preview&v=20260806a`;
+        link.href = `video-review.html?project=${encodedProject}&mode=preview&v=20260806b`;
         link.removeAttribute('target');
         link.removeAttribute('download');
       }
@@ -110,4 +110,12 @@
   const observer = new MutationObserver(() => decorateOutputLinks());
   observer.observe(document.body, {subtree: true, childList: true});
   window.setTimeout(() => observer.disconnect(), 15000);
+
+  if (completed === 'preview' && params.get('action') === 'final' && finalButton) {
+    if (status) status.textContent = 'プレビュー確認済み。最終版の書き出し確認を開きます…';
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('action');
+    history.replaceState(null, '', cleanUrl);
+    window.setTimeout(() => finalButton.click(), 450);
+  }
 })();
