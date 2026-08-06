@@ -1,0 +1,26 @@
+{
+  "title": "RTS Vlog Wizard UI Navigation",
+  "source": "web_console/static/index.html",
+  "screens": [
+    {"id": "projectPanel", "label": "新しいVlog", "section": "開始", "screenshot": "screenshots/projectPanel.png"},
+    {"id": "materialPanel", "label": "素材を追加", "section": "素材", "screenshot": "screenshots/materialPanel.png"},
+    {"id": "narrationPanel", "label": "ナレーション", "section": "音声", "screenshot": "screenshots/narrationPanel.png"},
+    {"id": "continuePanel", "label": "次の操作", "section": "追加", "screenshot": "screenshots/continuePanel.png"},
+    {"id": "compilePanel", "label": "最終確認とコンパイル", "section": "完成", "screenshot": "screenshots/compilePanel.png"},
+    {"id": "managePage", "label": "素材管理", "section": "管理", "screenshot": "screenshots/managePage.png"},
+    {"id": "downloadTarget", "label": "完成動画", "section": "出力", "screenshot": "screenshots/downloadTarget.png"}
+  ],
+  "actions": [
+    {"id": "begin", "source": "projectPanel", "label": "作成を始める", "expected_target": "materialPanel", "observed_target": null, "status": "unknown"},
+    {"id": "saveMaterial-normal", "source": "materialPanel", "label": "素材を保存", "expected_target": "continuePanel", "observed_target": null, "status": "unknown"},
+    {"id": "saveMaterial-screenshot", "source": "materialPanel", "label": "スクリーンショットを保存", "expected_target": "narrationPanel", "observed_target": null, "status": "unknown"},
+    {"id": "saveNarration", "source": "narrationPanel", "label": "ナレーションを保存", "expected_target": "continuePanel", "observed_target": null, "status": "unknown"},
+    {"id": "skipNarration", "source": "narrationPanel", "label": "録音しない", "expected_target": "continuePanel", "observed_target": null, "status": "unknown"},
+    {"id": "addMore", "source": "continuePanel", "label": "素材を追加する", "expected_target": "materialPanel", "observed_target": null, "status": "unknown"},
+    {"id": "goEnding", "source": "continuePanel", "label": "エンディングを追加", "expected_target": "materialPanel", "observed_target": null, "status": "unknown"},
+    {"id": "finish", "source": "continuePanel", "label": "確認へ進む", "expected_target": "compilePanel", "observed_target": null, "status": "unknown"},
+    {"id": "manage", "source": "continuePanel", "label": "素材を管理・削除", "expected_target": "managePage", "observed_target": null, "status": "unknown"},
+    {"id": "compile", "source": "compilePanel", "label": "最終動画をコンパイル", "expected_target": "compilePanel", "observed_target": null, "status": "unknown"},
+    {"id": "download", "source": "compilePanel", "label": "完成動画を開く", "expected_target": "downloadTarget", "observed_target": null, "status": "unknown"}
+  ]
+}
