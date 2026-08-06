@@ -12,7 +12,13 @@ from web_console.app_v4 import app
 from web_console.cloud_render_api import router as cloud_render_router
 from web_console import app_v3 as legacy
 
+FLIGHT_RECORDER_TAG = '<script src="/static/rts-flight-recorder.js?v=20260806a"></script>'
+FLIGHT_RECORDER_RE = re.compile(
+    r'<script\s+src=["\'](?:/static/|static/)?rts-flight-recorder\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
+    flags=re.IGNORECASE,
+)
 TIMED_NARRATION_TAGS = (
+    FLIGHT_RECORDER_TAG,
     '<script src="timed-narration-finish.js?v=20260805b"></script>',
     '<script src="timed-narration-recording-overlay.js?v=20260805b"></script>',
     '<script src="timed-narration-visibility-fix.js?v=20260805b"></script>',
@@ -23,10 +29,12 @@ TIMED_NARRATION_SCRIPT_RE = re.compile(
     flags=re.IGNORECASE,
 )
 COMPOSE_CONTROL_TAGS = (
+    FLIGHT_RECORDER_TAG,
     '<script src="static/rts-progress-overlay.js?v=20260806a"></script>',
     '<script src="static/compose-cloud-render.js?v=20260806b"></script>',
 )
 OUTPUT_CONTROL_TAGS = (
+    FLIGHT_RECORDER_TAG,
     '<script src="rts-progress-overlay.js?v=20260806a"></script>',
     '<script src="compose-cloud-render.js?v=20260806b"></script>',
     '<script src="output-review-flow.js?v=20260806e"></script>',
@@ -62,28 +70,28 @@ def uncached_html(html: str) -> HTMLResponse:
     )
 
 
+def inject_scripts(html: str, tags: tuple[str, ...], cleanup: re.Pattern[str] | None = None) -> str:
+    """Inject one canonical recorder/controller set before </body>."""
+    html = FLIGHT_RECORDER_RE.sub("", html)
+    if cleanup is not None:
+        html = cleanup.sub("", html)
+    injected = "\n".join(tags)
+    return html.replace("</body>", f"{injected}\n</body>")
+
+
 @app.middleware("http")
 async def inject_mobile_interaction_controllers(request: Request, call_next):
     """Serve mobile editors uncached with one canonical controller set."""
     if request.method == "GET" and request.url.path == "/static/timed-narration.html":
         html = (STATIC_DIR / "timed-narration.html").read_text(encoding="utf-8")
-        html = TIMED_NARRATION_SCRIPT_RE.sub("", html)
-        injected = "\n".join(TIMED_NARRATION_TAGS)
-        html = html.replace("</body>", f"{injected}\n</body>")
-        return uncached_html(html)
+        return uncached_html(inject_scripts(html, TIMED_NARRATION_TAGS, TIMED_NARRATION_SCRIPT_RE))
 
     if request.method == "GET" and request.url.path in {"/", "/static/compose.html"}:
         html = (STATIC_DIR / "compose.html").read_text(encoding="utf-8")
-        html = COMPOSE_CONTROL_RE.sub("", html)
-        injected = "\n".join(COMPOSE_CONTROL_TAGS)
-        html = html.replace("</body>", f"{injected}\n</body>")
-        return uncached_html(html)
+        return uncached_html(inject_scripts(html, COMPOSE_CONTROL_TAGS, COMPOSE_CONTROL_RE))
 
     if request.method == "GET" and request.url.path == "/static/output.html":
         html = (STATIC_DIR / "output.html").read_text(encoding="utf-8")
-        html = COMPOSE_CONTROL_RE.sub("", html)
-        injected = "\n".join(OUTPUT_CONTROL_TAGS)
-        html = html.replace("</body>", f"{injected}\n</body>")
-        return uncached_html(html)
+        return uncached_html(inject_scripts(html, OUTPUT_CONTROL_TAGS, COMPOSE_CONTROL_RE))
 
     return await call_next(request)
