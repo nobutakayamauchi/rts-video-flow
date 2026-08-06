@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rts.local/schemas/incident-report.schema.json",
+  "title": "RTS Incident Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "incident_id", "session_id", "status", "started_at", "finalized_at", "event_count", "events_sha256", "expected_path", "observed_path", "evidence_complete", "redaction"],
+  "properties": {
+    "version": {"const": 1},
+    "incident_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "session_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "status": {"enum": ["REPORT_FINALIZED"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finalized_at": {"type": "string", "format": "date-time"},
+    "project": {"type": ["string", "null"], "maxLength": 128},
+    "event_count": {"type": "integer", "minimum": 1},
+    "events_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "expected_path": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "observed_path": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "first_divergence_index": {"type": ["integer", "null"], "minimum": 0},
+    "evidence_complete": {"type": "boolean"},
+    "missing_evidence": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "request_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "execution_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "passed", "removed_fields"],
+      "properties": {
+        "policy": {"const": "rts-flight-recorder-redaction-v1"},
+        "passed": {"type": "boolean"},
+        "removed_fields": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}
