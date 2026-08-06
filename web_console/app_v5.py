@@ -10,9 +10,10 @@ from fastapi.responses import HTMLResponse
 from web_console.app import STATIC_DIR
 from web_console.app_v4 import app
 from web_console.cloud_render_api import router as cloud_render_router
+from web_console.flight_recorder_api import router as flight_recorder_router
 from web_console import app_v3 as legacy
 
-FLIGHT_RECORDER_TAG = '<script src="/static/rts-flight-recorder.js?v=20260806a"></script>'
+FLIGHT_RECORDER_TAG = '<script src="/static/rts-flight-recorder.js?v=20260806b"></script>'
 FLIGHT_RECORDER_RE = re.compile(
     r'<script\s+src=["\'](?:/static/|static/)?rts-flight-recorder\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
     flags=re.IGNORECASE,
@@ -58,6 +59,7 @@ def reject_local_render(project_name: str, mode: str):
 
 legacy.run_render = reject_local_render
 app.include_router(cloud_render_router)
+app.include_router(flight_recorder_router)
 
 
 def uncached_html(html: str) -> HTMLResponse:
