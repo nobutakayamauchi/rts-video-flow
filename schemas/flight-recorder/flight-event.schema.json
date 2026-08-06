@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rts.local/schemas/flight-event.schema.json",
+  "title": "RTS Flight Recorder Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "event_id", "session_id", "sequence", "occurred_at", "event_type", "screen", "payload"],
+  "properties": {
+    "version": {"const": 1},
+    "event_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "session_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "sequence": {"type": "integer", "minimum": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "event_type": {
+      "enum": ["session_start", "session_end", "activation", "navigation", "api_start", "api_success", "api_failure", "js_error", "unhandled_rejection", "connectivity_lost", "connectivity_restored", "step_changed", "output_observed"]
+    },
+    "screen": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project": {"type": ["string", "null"], "maxLength": 128},
+    "request_id": {"type": ["string", "null"], "maxLength": 128},
+    "execution_id": {"type": ["string", "null"], "maxLength": 128},
+    "step": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["current", "total"],
+      "properties": {
+        "current": {"type": "integer", "minimum": 1},
+        "total": {"type": "integer", "minimum": 1}
+      }
+    },
+    "payload": {
+      "type": "object",
+      "propertyNames": {
+        "not": {"pattern": "(?i)(authorization|cookie|password|token|secret|raw_text|media_bytes)"}
+      }
+    }
+  }
+}
