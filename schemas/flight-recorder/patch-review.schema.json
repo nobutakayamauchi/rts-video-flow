@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rts.local/schemas/patch-review.schema.json",
+  "title": "RTS Patch Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "review_id", "plan_id", "status", "commit_sha", "changed_files", "changed_lines", "tests", "guards", "rollback", "decision"],
+  "properties": {
+    "version": {"const": 1},
+    "review_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "plan_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "status": {"const": "READY_FOR_HUMAN_REVIEW"},
+    "commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "changed_files": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$"}, "uniqueItems": true},
+    "changed_lines": {"type": "integer", "minimum": 1},
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reproduction_failed_before", "reproduction_passed_after", "regression_passed", "deleted_tests", "weakened_assertions"],
+      "properties": {
+        "reproduction_failed_before": {"const": true},
+        "reproduction_passed_after": {"const": true},
+        "regression_passed": {"const": true},
+        "deleted_tests": {"const": 0},
+        "weakened_assertions": {"const": 0}
+      }
+    },
+    "guards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_within_plan", "security_bypass", "approval_bypass", "cost_gate_bypass", "errors_swallowed"],
+      "properties": {
+        "scope_within_plan": {"const": true},
+        "security_bypass": {"const": false},
+        "approval_bypass": {"const": false},
+        "cost_gate_bypass": {"const": false},
+        "errors_swallowed": {"const": false}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "command"],
+      "properties": {
+        "available": {"const": true},
+        "command": {"type": "string", "minLength": 1}
+      }
+    },
+    "decision": {"enum": ["PASS", "PASS_WITH_CONDITIONS", "REVISE", "REJECT"]},
+    "conditions": {"type": "array", "items": {"type": "string"}}
+  }
+}
