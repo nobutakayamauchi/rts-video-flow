@@ -1,0 +1,26 @@
+name: Vlog UI Debug Bootstrap
+
+on:
+  pull_request:
+    paths:
+      - 'web_console/static/**'
+      - 'debug/**'
+      - 'scripts/validate_ui_map.py'
+      - '.github/workflows/ui-debug-bootstrap.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-ui-map:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate declared screens and actions
+        run: python scripts/validate_ui_map.py
+      - name: Upload bootstrap report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vlog-ui-bootstrap-report
+          path: debug/ui-validation-report.json
