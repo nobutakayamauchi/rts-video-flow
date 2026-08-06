@@ -29,7 +29,7 @@ COMPOSE_CONTROL_TAGS = (
 OUTPUT_CONTROL_TAGS = (
     '<script src="rts-progress-overlay.js?v=20260806a"></script>',
     '<script src="compose-cloud-render.js?v=20260806b"></script>',
-    '<script src="output-review-flow.js?v=20260806c"></script>',
+    '<script src="output-review-flow.js?v=20260806d"></script>',
 )
 COMPOSE_CONTROL_RE = re.compile(
     r'<script\s+src=["\'](?:static/)?(?:compose-controls-recovery|compose-cloud-render|rts-progress-overlay|output-review-flow)\.js(?:\?[^"\']*)?["\']\s*></script>\s*',
