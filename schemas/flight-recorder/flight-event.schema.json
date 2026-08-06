@@ -30,7 +30,9 @@
     "payload": {
       "type": "object",
       "propertyNames": {
-        "not": {"pattern": "(?i)(authorization|cookie|password|token|secret|raw_text|media_bytes)"}
+        "not": {
+          "enum": ["authorization", "cookie", "password", "token", "access_token", "refresh_token", "client_secret", "secret", "raw_text", "media_bytes"]
+        }
       }
     }
   }
