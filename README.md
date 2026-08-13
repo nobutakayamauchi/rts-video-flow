@@ -11,7 +11,7 @@ The project implemented and explored iPhone media intake, transcription, subtitl
 On 2026-08-14 the project was run through a `/goal` / METEOR replacement review using the rule:
 
 ```text
-KEEP EXISTING → EXTRACT → NEW BUILD ONLY IF IRREDUCIBLE
+KEEP EXISTING → EXTRACT → NEW BUILD ONLY IF IRREDUCIBLE OR PROVEN ARCHITECTURALLY SUPERIOR
 ```
 
 The standalone editor boundary did not survive.
@@ -39,17 +39,20 @@ The standalone editor boundary did not survive.
 - privacy / publication safety responsibility: `KEEP RESPONSIBILITY`
 - final human publication decision: `HARD KEEP`
 
-No replacement bridge is authorized yet. Before any new Vlog-specific code is created, representative smartphone development material must be processed with existing external tools. Only recurring friction that survives those tools and cannot be removed by process, prompting, or existing capabilities may become an `IRREDUCIBLE` candidate.
+No replacement bridge is authorized yet. Existing tools must be tested first. However, the existence of an external service does not automatically block new construction: if the available architectures are materially weak for the frozen workload and a bounded new architecture proves materially superior under the same METEOR workload and whole-life fitness criteria, it may become a legitimate new-build candidate.
 
-Until then:
+A benchmark win alone is not enough. Reliability, operator burden, security/privacy, maintainability, cost, migration and rollback, dependency risk, recoverability, and promotion authority remain part of the decision.
+
+Until such evidence exists:
 
 ```text
 NO NEW BUILD
 ```
 
-Canonical closure record:
+Canonical closure records:
 
 - [VLOG METEOR — 2026-08-14](docs/VLOG_METEOR_2026-08-14.md)
+- [Vlog /goal verdict — 2026-08-14](docs/VLOG_GOAL_VERDICT_2026-08-14.md)
 
 ## Historical project description
 
