@@ -1,6 +1,6 @@
 # VLOG METEOR — 2026-08-14
 
-Status: `STANDALONE_EDITOR_KILLED / HISTORY_PRESERVED / NO_NEW_BUILD`
+Status: `STANDALONE_EDITOR_KILLED / HISTORY_PRESERVED / NO_NEW_BUILD_BY_DEFAULT`
 
 ## Goal
 
@@ -12,7 +12,7 @@ The project is not required to own its own transcription engine, subtitle engine
 
 Decision rule:
 
-`KEEP EXISTING -> EXTRACT -> NEW BUILD ONLY IF IRREDUCIBLE`
+`KEEP EXISTING -> EXTRACT -> NEW BUILD ONLY IF IRREDUCIBLE OR PROVEN ARCHITECTURALLY SUPERIOR`
 
 Disposition:
 
@@ -33,6 +33,32 @@ Disposition:
 - privacy/publication safety responsibility: `KEEP RESPONSIBILITY`
 - final human publication decision: `HARD KEEP`
 
+## New-build exception
+
+External-service existence is not a permanent veto on new construction.
+
+A bounded new architecture may become a legitimate candidate if the available existing architectures are materially weak for the frozen workload and the new candidate proves materially superior under the same METEOR workload and whole-life fitness criteria.
+
+A performance benchmark alone does not authorize construction or promotion. The comparison must include, as relevant:
+
+- quality / capability
+- throughput / latency / resource efficiency
+- reliability and degradation behavior
+- operator burden
+- security and privacy
+- maintainability
+- direct and whole-life cost
+- dependency / provider / lock-in risk
+- migration and rollback fitness
+- recoverability / PHOENIX implications
+- evidence maturity and promotion authority
+
+The rule is therefore not `existing service exists -> never build`.
+
+It is:
+
+`REUSE FIRST, BUT DO NOT PRESERVE A BAD ARCHITECTURE MERELY BECAUSE IT ALREADY EXISTS.`
+
 ## Closure actions
 
 - PR #4 is to remain unmerged and closed as superseded implementation history.
@@ -44,7 +70,7 @@ Disposition:
 
 Before any new Vlog-specific code is created, test the real external-tool path with representative smartphone development material.
 
-Only recurring friction that survives external tools and cannot be removed by process, prompting, or existing capabilities may become an `IRREDUCIBLE` candidate.
+Only recurring friction that survives external tools, or a demonstrably inferior incumbent architecture that can be materially outperformed by a bounded new design under the same frozen workload, may reopen BUILD.
 
 Until then:
 
