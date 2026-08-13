@@ -1,77 +1,68 @@
 # rts-video-flow Status
 
-Status: FREEZE / VIDEO-WORKFLOW / REVIEW BEFORE USE
+Status: **DEVELOPMENT ENDED / STANDALONE EDITOR SUPERSEDED — 2026-08-14**
 
-rts-video-flow is a scaffold for a Codex-assisted video editing workflow.
+`rts-video-flow` is preserved as a historical smartphone-first Vlog editing prototype and development record.
 
-Its current scope is video workflow experimentation around subtitles, silence cutting, rendering preparation, scripts, and project structure.
+The standalone editor no longer has authority to expand by default.
 
-It is not RTS core.
+## /goal disposition
 
-It is not RTS-AGE.
+The human-important goal remains:
 
-It is not a production publishing pipeline.
+> Turn smartphone-first development records into publishable Vlog material with low operator burden, while preserving privacy review and final human publication authority.
 
-It is not an automatic upload system.
+The repository does **not** need to own generic editing capabilities when existing tools can carry them better.
 
-It is not a content rights management system.
+Killed as owned implementation responsibilities:
 
-It is not an always-on media processing service.
+- generic transcription and subtitle generation
+- silence / jump-cut processing
+- generic narration and audio editing
+- Remotion rendering
+- Oracle render-worker responsibility
+- Google Cloud overflow rendering
+- custom composition/editor UI
+- generated-output lifecycle management
+- custom trash/restore subsystem
+- Vlog-specific debug-engine expansion
 
-## Current Position
+Preserved:
 
-This repository should remain frozen unless there is a concrete video-workflow review or implementation task.
+- Git history and source code
+- architecture and failure records
+- mobile-first operator-burden evidence
+- privacy/publication safety lessons
 
-The repository may be useful as a reference or prototype for local video processing workflows.
+Surviving responsibilities:
 
-However, it should not become active publishing, platform automation, or unattended media processing infrastructure by default.
+- editorial intent derived from development history
+- privacy / secret / personal-information review before publication
+- final human publication authority
 
-Allowed by default:
+## New-build boundary
 
-- clarify video workflow boundaries
-- document local workflow assumptions
-- document input, output, and temporary file expectations
-- document review steps before implementation
-- improve safety notes around source media, generated subtitles, and rendering outputs
-- classify existing files as ready, draft, stale, risky, move, or archive candidates
-- preserve the repository as a frozen video workflow prototype
+No replacement bridge is authorized merely because the old implementation was retired.
 
-Prohibited by default:
+Reuse and composition remain the default. However, existing-service availability alone does not prohibit a new build.
 
-- adding automatic upload or publishing behavior
-- adding platform automation
-- adding credentials, API keys, tokens, or private links
-- adding background processing services
-- adding unattended execution workflows
-- adding copyrighted source media
-- adding customer or private video material
-- adding impersonation or deceptive media workflows
-- turning this repository into RTS core, RTS-AGE, or production infrastructure
+A new architecture may become a candidate when the available architectures are materially weak for the frozen workload and a bounded new design demonstrates materially superior whole-life fitness under the same evidence standard. Performance improvement alone is insufficient: reliability, operator burden, security/privacy, maintainability, cost, migration/rollback, dependency risk, recoverability, and promotion authority remain part of the gate.
 
-## Boundary
+Until such evidence exists:
 
-RTS defines canonical protocol and reconstructability rules.
+`NO NEW BUILD`
 
-RTS-AGE may prepare implementation artifacts under review boundaries.
+## Canonical closure records
 
-rts-video-flow should only hold video-workflow prototype materials and local processing notes.
+- `docs/VLOG_METEOR_2026-08-14.md`
+- `docs/VLOG_GOAL_VERDICT_2026-08-14.md`
 
-It should not publish content, automate platform actions, or store sensitive media by default.
+## Historical boundary retained
 
-## Freeze Definition
+- do not add automatic upload or publishing behavior by default
+- do not add credentials, API keys, tokens, or private links
+- do not store customer/private media in the repository
+- retain human review before publication
+- do not revive a killed subsystem without a fresh `/goal` decision
 
-This repository is considered safely frozen when:
-
-1. Its video-workflow prototype role is explicit.
-2. Publishing, upload, and platform automation are prohibited by default.
-3. Media inputs and outputs are treated as local review artifacts.
-4. Source media, generated subtitles, and rendered outputs require rights and privacy review before public use.
-5. Future edits require a concrete video-workflow purpose.
-
-## Current Decision
-
-Keep this repository frozen.
-
-Treat it as a local video workflow prototype and archive-adjacent reference.
-
-Do not expand it into production publishing, platform automation, or unattended media processing without a separate decision record.
+Retirement is an operational decision, not deletion of history.
