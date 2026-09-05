@@ -1,68 +1,34 @@
 # AGENTS.md
 
-## Scope
+## Status
+**COLD / DEVELOPMENT ENDED / EXPLICIT REFERENCE ONLY**
 
-This file applies to the entire repository.
+`rts-video-flow` is a preserved historical smartphone-first Vlog/editor prototype. The standalone editor responsibility was superseded and development ended.
 
-## Required reading
+## Load rule
+Do not include this repository in ordinary cross-repository implementation discovery, product planning, or current architecture selection.
 
-Before editing, read:
+Open it only when the task explicitly requires:
+- historical Vlog implementation evidence;
+- old media-flow experiments;
+- publication-safety lessons;
+- reconstruction of a specific past bug or decision.
 
-1. `README.md`
-2. `docs/STATUS.md`
-3. `docs/NEXT.md`
+Do not read historical implementation files, render scripts, media-flow docs, or old outputs by default.
 
-## Purpose
+## Surviving responsibilities
+The repository may still be consulted for:
+- publication/privacy safety lessons;
+- historical development evidence;
+- editorial intent that has not been superseded elsewhere.
 
-This repository is a **frozen local video workflow prototype**.
-
-It may contain scaffold material for subtitles, silence cutting, rendering preparation, scripts, and project structure.
-
-It is not RTS core.
-
-It is not RTS-AGE.
-
-It is not a production publishing pipeline.
-
-It is not an automatic upload system.
+Those surviving responsibilities do not authorize rebuilding the standalone editor.
 
 ## Hard boundaries
+- No new editor/runtime expansion by default.
+- No automatic upload or publishing behavior.
+- No platform automation, credentials, secrets, or unattended execution.
+- Do not treat historical code as current architecture authority.
 
-- Do not add automatic upload or publishing behavior.
-- Do not add platform automation.
-- Do not add credentials, API keys, tokens, secrets, or private links.
-- Do not add customer media, private video material, or copyrighted source media.
-- Do not add background processing services or unattended execution workflows.
-- Do not add impersonation or deceptive media workflows.
-- Do not turn this repository into RTS core, RTS-AGE, or production infrastructure.
-
-## Media handling
-
-Treat media inputs, generated subtitles, temporary files, and rendered outputs as local review artifacts unless explicitly reviewed otherwise.
-
-Before adding or referencing media, consider:
-
-- source rights
-- privacy
-- public-use permission
-- generated subtitle accuracy
-- whether output could be mistaken as published or approved content
-
-## Freeze boundary
-
-Treat the next pass as freeze review and video-flow inventory, not expansion.
-
-If an item implies automatic publishing, platform automation, unattended execution, sensitive media, or public use of unreviewed assets, mark it as `RISKY` and do not expand it.
-
-If this repository is not needed for current work, leave it frozen.
-
-## Change style
-
-- Keep documentation lightweight and explicit.
-- Prefer additive edits; avoid destructive rewrites.
-- Prefer review-boundary documentation over implementation.
-- Do not rewrite scripts unless there is a concrete video-workflow task.
-
-## Validation
-
-For documentation-only changes, report changed files and confirm that no media files, credentials, automatic publishing, platform automation, background service, unattended execution workflow, or production behavior was added.
+## Stop condition
+If the task is not specifically about this historical video-flow repository, stop reading it and route to the current product/method repository relevant to the task.
