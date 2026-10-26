@@ -1,9 +1,6 @@
 name: HTTP2Shell runtime check
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
